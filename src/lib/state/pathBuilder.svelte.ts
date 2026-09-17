@@ -1,15 +1,25 @@
+/* eslint-disable svelte/prefer-svelte-reactivity --
+ * The Maps and Sets below are local working collections inside $derived getters
+ * and plain methods - adjacency indexes, visited sets - rebuilt from scratch on
+ * each call and never read reactively. Reactive state here is the plain arrays
+ * (codes, roots, edges); SvelteMap would add proxying to a hot path for nothing.
+ */
 /**
- * The path builder: an explorable tree that grows outward from one course.
+ * The path builder: a graph of only the courses you have chosen to draw.
  *
- * Unlike the map, this draws only what you have chosen to draw. You start from
- * a course and expand it in either direction - backward toward what it requires,
- * forward toward what it unlocks - one hop at a time. Everything you did not
- * pick stays undrawn, so the view never accumulates the clutter the full map
- * has by design.
+ * You start from a course and expand it in either direction - backward toward
+ * what it requires, forward toward what it unlocks - one hop at a time. Nothing
+ * you did not pick gets drawn, so the view never accumulates the clutter the
+ * full map has by design.
  *
- * The two directions share one interaction (select 1..n candidates) but differ
- * in meaning: backward, a course's requirement rows say how many you actually
- * need; forward, nothing is required and the list is simply ranked.
+ * Several courses can be explored at once. Each becomes a root, and the drawn
+ * set is a genuine graph rather than a tree: a course reached from two different
+ * places is drawn once with an edge to each, and two separate explorations merge
+ * into one component the moment they share a course.
+ *
+ * Depth is therefore *computed* from the drawn graph rather than stored per
+ * node. Storing "hops from the root" would go stale the instant a second root
+ * appeared or two components merged.
  */
 import type Graph from 'graphology';
 import type { CourseAttributes, EdgeAttributes } from '../graph/loadGraph';
@@ -18,17 +28,10 @@ import { requirementGroups, type RequirementGroup } from '../graph/requirementGr
 
 export type Direction = 'back' | 'forward';
 
-export interface PathNode {
-	code: string;
-	/**
-	 * Signed hop distance from the root: negative toward prerequisites, positive
-	 * toward dependents. This is the row a node is drawn in, and the value the
-	 * colour ramp keys off.
-	 */
-	tier: number;
-	/** The node this was expanded from; null for the root. */
-	parent: string | null;
-	direction: Direction | 'root';
+/** A drawn edge, always oriented prerequisite -> dependent. */
+export interface PathEdge {
+	from: string;
+	to: string;
 }
 
 export interface ForwardCandidate {
@@ -41,15 +44,16 @@ export interface ForwardCandidate {
 }
 
 export class PathBuilderState {
-	root = $state<string | null>(null);
-	/** Drawn nodes, keyed by course code. */
-	nodes = $state<PathNode[]>([]);
+	/** Courses drawn, in the order they were added. */
+	codes = $state<string[]>([]);
+	/** Courses explored from directly; each anchors depth for its component. */
+	roots = $state<string[]>([]);
+	edges = $state<PathEdge[]>([]);
+
 	/** The node whose candidate list is currently open. */
 	expanding = $state<{ code: string; direction: Direction } | null>(null);
 
-	/** Requirement rows for the course being expanded backward. */
 	groups = $state<RequirementGroup[]>([]);
-	/** Ranked dependents for the course being expanded forward. */
 	forward = $state<ForwardCandidate[]>([]);
 	loading = $state(false);
 	detail = $state<CourseDetail | null>(null);
@@ -61,51 +65,106 @@ export class PathBuilderState {
 	}
 
 	has(code: string): boolean {
-		return this.nodes.some((node) => node.code === code);
+		return this.codes.includes(code);
 	}
 
-	nodeAt(code: string): PathNode | undefined {
-		return this.nodes.find((node) => node.code === code);
+	get isEmpty(): boolean {
+		return this.codes.length === 0;
 	}
 
-	/** Rows of the tree, ordered from deepest prerequisite to furthest dependent. */
+	/**
+	 * Signed depth per course: negative toward prerequisites, positive toward
+	 * dependents, zero at a root.
+	 *
+	 * Breadth-first from every root at once, so each course takes the reading of
+	 * whichever root reaches it first. Anything left unvisited - possible only if
+	 * its root was removed - falls back to zero rather than vanishing.
+	 */
 	tiers = $derived.by(() => {
-		// Rebuilt from scratch on every change and never mutated afterwards, so
-		// plain Map is correct - SvelteMap would add proxying for no benefit.
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const byTier = new Map<number, PathNode[]>();
-		for (const node of this.nodes) {
-			const list = byTier.get(node.tier) ?? byTier.set(node.tier, []).get(node.tier)!;
-			list.push(node);
+		const depth = new Map<string, number>();
+		const outgoing = new Map<string, string[]>();
+		const incoming = new Map<string, string[]>();
+
+		for (const edge of this.edges) {
+			(outgoing.get(edge.from) ?? outgoing.set(edge.from, []).get(edge.from)!).push(edge.to);
+			(incoming.get(edge.to) ?? incoming.set(edge.to, []).get(edge.to)!).push(edge.from);
 		}
-		return [...byTier.entries()]
-			.sort((a, b) => a[0] - b[0])
-			.map(([tier, nodes]) => ({ tier, nodes }));
+
+		const queue = this.roots.filter((root) => this.has(root));
+		for (const root of queue) depth.set(root, 0);
+
+		for (let index = 0; index < queue.length; index++) {
+			const code = queue[index];
+			const current = depth.get(code)!;
+
+			// Prerequisites sit one level below; dependents one level above.
+			for (const prerequisite of incoming.get(code) ?? []) {
+				if (depth.has(prerequisite)) continue;
+				depth.set(prerequisite, current - 1);
+				queue.push(prerequisite);
+			}
+			for (const dependent of outgoing.get(code) ?? []) {
+				if (depth.has(dependent)) continue;
+				depth.set(dependent, current + 1);
+				queue.push(dependent);
+			}
+		}
+
+		return this.codes.map((code) => ({ code, tier: depth.get(code) ?? 0 }));
 	});
 
-	/** Edges between drawn nodes, so the view can connect them. */
-	links = $derived.by(() =>
-		this.nodes
-			.filter((node) => node.parent)
-			.map((node) =>
-				node.direction === 'back'
-					? { from: node.code, to: node.parent! }
-					: { from: node.parent!, to: node.code }
-			)
-	);
+	tierOf(code: string): number {
+		return this.tiers.find((entry) => entry.code === code)?.tier ?? 0;
+	}
 
-	start(code: string): void {
-		this.root = code;
-		this.nodes = [{ code, tier: 0, parent: null, direction: 'root' }];
-		this.expanding = null;
-		this.groups = [];
-		this.forward = [];
+	/** Every drawn course this one is directly related to, in either direction. */
+	private relatedTo(code: string): PathEdge[] {
+		const graph = this.graph;
+		if (!graph?.hasNode(code)) return [];
+
+		const found: PathEdge[] = [];
+		for (const other of this.codes) {
+			if (other === code || !graph.hasNode(other)) continue;
+			if (graph.hasDirectedEdge(other, code)) found.push({ from: other, to: code });
+			if (graph.hasDirectedEdge(code, other)) found.push({ from: code, to: other });
+		}
+		return found;
+	}
+
+	private hasEdge(edge: PathEdge): boolean {
+		return this.edges.some((existing) => existing.from === edge.from && existing.to === edge.to);
+	}
+
+	/**
+	 * Draws a course, wiring it to everything already drawn that it directly
+	 * relates to. This is what dedupes a shared prerequisite - the second course
+	 * needing it gets an edge to the existing node instead of a second copy.
+	 */
+	private draw(code: string): PathEdge[] {
+		const fresh = this.relatedTo(code).filter((edge) => !this.hasEdge(edge));
+		if (!this.has(code)) this.codes = [...this.codes, code];
+		if (fresh.length) this.edges = [...this.edges, ...fresh];
+		return fresh;
+	}
+
+	/**
+	 * Adds a course explored in its own right.
+	 *
+	 * It only becomes a root when nothing already drawn relates to it; otherwise
+	 * it joins the existing component and takes its depth from there.
+	 */
+	addRoot(code: string): void {
+		const connections = this.draw(code);
+		if (connections.length === 0 && !this.roots.includes(code)) {
+			this.roots = [...this.roots, code];
+		}
 		void this.expand(code, 'back');
 	}
 
 	clear(): void {
-		this.root = null;
-		this.nodes = [];
+		this.codes = [];
+		this.roots = [];
+		this.edges = [];
 		this.expanding = null;
 		this.groups = [];
 		this.forward = [];
@@ -167,58 +226,63 @@ export class PathBuilderState {
 		);
 	}
 
-	/** Draws the chosen courses one hop out from `parent`. */
+	/**
+	 * Draws the chosen courses one hop out from `parent`.
+	 *
+	 * The explicit edge to `parent` is added even when the wider graph does not
+	 * record one, so a corequisite or an unparsed reference still shows the link
+	 * the user just acted on.
+	 */
 	add(parent: string, codes: string[], direction: Direction): void {
-		const parentNode = this.nodeAt(parent);
-		if (!parentNode) return;
-
-		const tier = parentNode.tier + (direction === 'back' ? -1 : 1);
-		const added: PathNode[] = [];
+		if (!this.has(parent)) return;
 
 		for (const code of codes) {
-			if (this.has(code)) continue;
-			added.push({ code, tier, parent, direction });
+			this.draw(code);
+			const edge = direction === 'back' ? { from: code, to: parent } : { from: parent, to: code };
+			if (!this.hasEdge(edge)) this.edges = [...this.edges, edge];
 		}
 
-		if (added.length) this.nodes = [...this.nodes, ...added];
 		this.expanding = null;
 	}
 
 	/**
-	 * Removes a course and everything drawn beyond it.
+	 * Removes a course, then drops anything left stranded.
 	 *
-	 * Revising an early decision has to discard what followed from it, otherwise
-	 * the tree would keep showing branches that are no longer reachable.
+	 * With several roots a course can be reached from more than one place, so
+	 * "everything downstream" is no longer well defined. Instead, whatever is no
+	 * longer connected to any remaining root goes too - which collapses to the
+	 * old behaviour for a single tree.
 	 */
 	remove(code: string): void {
-		if (code === this.root) {
-			this.clear();
-			return;
+		const codes = this.codes.filter((existing) => existing !== code);
+		const edges = this.edges.filter((edge) => edge.from !== code && edge.to !== code);
+		const roots = this.roots.filter((root) => root !== code);
+
+		const neighbours = new Map<string, string[]>();
+		const link = (a: string, b: string) =>
+			(neighbours.get(a) ?? neighbours.set(a, []).get(a)!).push(b);
+		for (const edge of edges) {
+			link(edge.from, edge.to);
+			link(edge.to, edge.from);
 		}
 
-		// A local working set inside a plain function; nothing reactive reads it.
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const doomed = new Set([code]);
-		let changed = true;
-		while (changed) {
-			changed = false;
-			for (const node of this.nodes) {
-				if (node.parent && doomed.has(node.parent) && !doomed.has(node.code)) {
-					doomed.add(node.code);
-					changed = true;
-				}
+		const reachable = new Set<string>();
+		const queue = roots.filter((root) => codes.includes(root));
+		queue.forEach((root) => reachable.add(root));
+		for (let index = 0; index < queue.length; index++) {
+			for (const next of neighbours.get(queue[index]) ?? []) {
+				if (reachable.has(next)) continue;
+				reachable.add(next);
+				queue.push(next);
 			}
 		}
 
-		this.nodes = this.nodes.filter((node) => !doomed.has(node.code));
-		if (this.expanding && doomed.has(this.expanding.code)) this.expanding = null;
+		this.codes = codes.filter((existing) => reachable.has(existing));
+		this.roots = roots.filter((root) => reachable.has(root));
+		this.edges = edges.filter((edge) => reachable.has(edge.from) && reachable.has(edge.to));
+		if (this.expanding && !this.has(this.expanding.code)) this.expanding = null;
 	}
 
-	/** Courses drawn so far, excluding the root: the plan you have built. */
-	chosen = $derived(
-		this.nodes
-			.filter((node) => node.direction !== 'root')
-			.map((node) => node.code)
-			.sort()
-	);
+	/** Courses drawn so far, excluding roots: the plan you have built. */
+	chosen = $derived(this.codes.filter((code) => !this.roots.includes(code)).sort());
 }
