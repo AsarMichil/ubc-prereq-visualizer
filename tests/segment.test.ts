@@ -83,6 +83,25 @@ describe('segmentDescription', () => {
 		expect(inverted.creditExclusionText).toContain('GERM 318');
 	});
 
+	// UBC varies the modal and the verb; each unmatched variant becomes a
+	// fabricated prerequisite, so the shape is matched rather than the wording.
+	it('strips credit exclusions whatever modal and verb they use', () => {
+		const cases: [string, string][] = [
+			['Credit cannot be granted for both JRNL_V 440 and JRNL_V 540.', 'JRNL_V 440'],
+			['Credit cannot be obtained for both CPEN_V 355 and CPSC_V 340.', 'CPEN_V 355'],
+			['Credit will only be given for one of ELEC_V 201 or EECE_V 259.', 'ELEC_V 201'],
+			['Credit can only be applied for one of ASIA_V 100, ITST_V 100.', 'ASIA_V 100'],
+			['Credit will be allowed for only one of GEOB_V 102 or GEOG_V 102.', 'GEOB_V 102'],
+			['Credit will not be given for both PSYC_V 100 and PSYC_V 101.', 'PSYC_V 100']
+		];
+
+		for (const [sentence, mentioned] of cases) {
+			const result = segmentDescription(`A course. Prerequisite: MATH_V 100. ${sentence}`);
+			expect(result.prerequisiteText).toBe('MATH_V 100');
+			expect(result.creditExclusionText).toContain(mentioned);
+		}
+	});
+
 	it('extracts equivalency separately from credit exclusion', () => {
 		const result = segmentDescription(
 			'Works of Leo Tolstoy. Credit will be granted for only one of RUSS_V 411 or SLAV_V 447. ' +

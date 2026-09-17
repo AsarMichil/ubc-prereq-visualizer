@@ -106,6 +106,46 @@ describe('parseRequirement', () => {
 		});
 	});
 
+	// UBC drops the "of" after a quantifier when a label or course follows:
+	// "both (a) X and (b) Y". Read as free text this silently ORs the groups that
+	// the word "both" exists to conjoin.
+	it('treats a quantifier without "of" as governing the labelled groups', () => {
+		expect(
+			shape(
+				parseRequirement(
+					'Either CPSC_V 340 or both (a) AI_V 240 and (b) one of STAT_V 251, ECON_V 325'
+				)
+			)
+		).toEqual({
+			oneOf: ['CPSC 340', { all: ['AI 240', { oneOf: ['STAT 251', 'ECON 325'] }] }]
+		});
+
+		expect(
+			shape(
+				parseRequirement(
+					'Both (a) one of MATH_V 302, MATH_V 318 and (b) one of ECON_V 326, STAT_V 300'
+				)
+			)
+		).toEqual({
+			all: [{ oneOf: ['MATH 302', 'MATH 318'] }, { oneOf: ['ECON 326', 'STAT 300'] }]
+		});
+	});
+
+	it('reads "both" as a conjunction, with or without "of"', () => {
+		expect(shape(parseRequirement('Both of CAPS_V 205, CAPS_V 206'))).toEqual({
+			all: ['CAPS 205', 'CAPS 206']
+		});
+		expect(shape(parseRequirement('both CHEM_V 121 and CHEM_V 123'))).toEqual({
+			all: ['CHEM 121', 'CHEM 123']
+		});
+	});
+
+	// "one" only becomes a quantifier before a label, never before a bare course.
+	it('does not treat a bare "one" before a course as a quantifier', () => {
+		const result = shape(parseRequirement('One of CPSC 210, CPEN 221'));
+		expect(result).toEqual({ oneOf: ['CPSC 210', 'CPEN 221'] });
+	});
+
 	it('binds a grade threshold to whatever follows "in", including a disjunction', () => {
 		expect(shape(parseRequirement('MATH 300 and a score of 68% or higher in MATH 321'))).toEqual({
 			all: ['MATH 300', { '68%': 'MATH 321' }]

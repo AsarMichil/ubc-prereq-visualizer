@@ -355,7 +355,10 @@ class Parser {
 		let groupMode = mode;
 		let leadTo = trimConnectors(this.pos, labels[0]);
 		if (leadTo > this.pos && this.tokens[leadTo - 1].type === 'QUANT') {
-			groupMode = this.tokens[leadTo - 1].quantity === 'all' ? 'all' : 'oneOf';
+			const quantity = this.tokens[leadTo - 1].quantity;
+			// "all"/"both" mean every group; a number that happens to equal the group
+			// count means the same thing, so treat it as a conjunction either way.
+			groupMode = quantity === 'all' || quantity === labels.length ? 'all' : 'oneOf';
 			leadTo = trimConnectors(this.pos, leadTo - 1);
 		}
 

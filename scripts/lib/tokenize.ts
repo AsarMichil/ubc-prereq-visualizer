@@ -45,7 +45,7 @@ const WORD_TO_COUNT: Record<string, number | 'all'> = {
 	four: 4,
 	five: 5,
 	six: 6,
-	both: 2,
+	both: 'all',
 	all: 'all'
 };
 
@@ -70,7 +70,15 @@ const HS_NAMED = new RegExp(
 
 const PATTERNS: [TokenType, RegExp][] = [
 	// Quantifiers first: "One of" must not tokenize as WORD("One") + WORD("of").
-	['QUANT', /\b(one|two|three|four|five|six|both|all)\s+of\b/iy],
+	// The word "of" is optional in two cases UBC actually writes:
+	//   "both (a) AI 240 and (b) one of ..."   quantifier straight onto a label
+	//   "both CHEM 121 and CHEM 123"           quantifier straight onto a course
+	// Only "both"/"all" may drop the "of" before a course, because "one CPSC 110"
+	// is not a quantifier phrase whereas "both CPSC 110 and ..." is.
+	[
+		'QUANT',
+		/\b(one|two|three|four|five|six|both|all)\s+of\b|\b(both|all)\s+(?=\(?[a-z]\)|[A-Z]{2,5}(?:_[VO])?\s*\d)|\b(one|two|three|four|five|six)\s+(?=\(?[a-z]\))/iy
+	],
 	['EITHER', /\beither\b/iy],
 	// Labelled alternatives must be tried before a bare "(". The calendar writes
 	// both "(a)" and a bare "a)".
@@ -117,7 +125,8 @@ export function tokenize(input: string): Token[] {
 			const token: Token = { type, raw: match[0], start: pos };
 
 			if (type === 'QUANT') {
-				token.quantity = WORD_TO_COUNT[match[1].toLowerCase()];
+				const word = (match[1] ?? match[2] ?? match[3]).toLowerCase();
+				token.quantity = WORD_TO_COUNT[word];
 			} else if (type === 'GRADE') {
 				token.grade = { min: Number(match[1] ?? match[2]), unit: 'percent' };
 			} else if (type === 'NUMBER') {

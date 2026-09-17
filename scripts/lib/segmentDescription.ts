@@ -17,11 +17,15 @@
 import type { CourseSections } from '../../src/lib/types.ts';
 
 /**
- * Credit-exclusion sentences come in several phrasings, verified by frequency
- * across the corpus: "...for only one of X or Y" (824), "Credit will only be
- * granted for one of..." (140), "...for either X or Y and Z" (16), "...for up
- * to 6 credits of..." (17). Matching only the first phrasing left the others to
- * be parsed as prerequisites, which fabricated edges (PATH 409 <-> PATH 410).
+ * Credit-exclusion sentences come in many phrasings. UBC varies the modal
+ * ("will", "can", "cannot"), the negation, the word "only", and the verb
+ * ("granted", "given", "applied", "allowed", "obtained"), so the pattern matches
+ * the shape rather than any fixed wording.
+ *
+ * Getting this wrong invents prerequisites. Matching only "Credit will be
+ * granted for only one of" left 80 statements in the clause, including
+ * "Credit cannot be granted for both JRNL 440 and JRNL 540" - which parses as a
+ * course requiring itself and its own alternative.
  */
 /**
  * UBC embeds links mid-sentence, e.g. CPSC 320's prerequisite runs into
@@ -31,7 +35,8 @@ import type { CourseSections } from '../../src/lib/types.ts';
  */
 const EMBEDDED_URL = /https?:\/\/\S+/g;
 
-const CREDIT_EXCLUSION = /Credit will (?:only )?be granted for[^.]*\.?/gi;
+const CREDIT_EXCLUSION =
+	/Credit\s+(?:will|can|cannot|may|shall|is)\s+(?:not\s+)?(?:only\s+)?be\s+(?:granted|given|applied|allowed|obtained|awarded)[^.]*\.?/gi;
 const HOURS_VECTOR = /\[\s*(\d[\d\-;\s.*]*)\]/;
 const MARKER = /\b(Prerequisites?|Corequisites?|Equivalenc(?:y|ies)|Recommended)\s*:/g;
 
