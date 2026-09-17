@@ -1,0 +1,15 @@
+{
+	"fetchedAt": "2026-09-16T20:13:10.103Z",
+	"finishedAt": "2026-09-16T20:18:33.705Z",
+	"delayMs": 1000,
+	"subjects": {
+		"count": 264,
+		"pages": 6,
+		"bytes": 55587
+	},
+	"courses": {
+		"count": 9491,
+		"pages": 190,
+		"bytes": 1688479
+	}
+}

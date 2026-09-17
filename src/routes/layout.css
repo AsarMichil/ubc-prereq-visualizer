@@ -1,0 +1,52 @@
+@import 'tailwindcss';
+
+/*
+ * Chart/map surfaces and ink, from the validated palette. Dark values are
+ * declared under both the media query and the data-theme scope so an explicit
+ * theme choice wins in either direction.
+ */
+:root {
+	color-scheme: light;
+	--surface: #fcfcfb;
+	--surface-raised: #ffffff;
+	--ink-primary: #0b0b0b;
+	--ink-secondary: #52514e;
+	--ink-muted: #8a8984;
+	--line: #e3e2dd;
+	--chip: #f2f1ed;
+	--chip-active: #e6e5e0;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:where(:not([data-theme='light'])) {
+		color-scheme: dark;
+		--surface: #1a1a19;
+		--surface-raised: #232321;
+		--ink-primary: #ffffff;
+		--ink-secondary: #c3c2b7;
+		--ink-muted: #75746c;
+		--line: #343430;
+		--chip: #26262300;
+		--chip: #262623;
+		--chip-active: #32322e;
+	}
+}
+
+:root[data-theme='dark'] {
+	color-scheme: dark;
+	--surface: #1a1a19;
+	--surface-raised: #232321;
+	--ink-primary: #ffffff;
+	--ink-secondary: #c3c2b7;
+	--ink-muted: #75746c;
+	--line: #343430;
+	--chip: #262623;
+	--chip-active: #32322e;
+}
+
+html,
+body {
+	height: 100%;
+	background: var(--surface);
+	color: var(--ink-primary);
+}

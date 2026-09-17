@@ -1,0 +1,54 @@
+# Re-scrapes the UBC calendar and opens a PR with the result.
+#
+# The raw snapshot and the built artifacts are both committed, so the PR diff
+# shows exactly which courses and prerequisites UBC changed since the last run —
+# which is a useful record in its own right, and the reason this is a PR rather
+# than a push to main.
+name: Refresh calendar data
+
+on:
+  schedule:
+    # Quarterly, a few weeks after each term's course changes usually land.
+    - cron: '0 9 1 1,5,9 *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Scrape the calendar
+        run: bun run scrape
+
+      - name: Rebuild artifacts
+        # Fails the run if the parser drops a course code, so a silently
+        # missing edge can never reach main.
+        run: bun run build:data
+
+      - name: Run tests
+        run: bun run test
+
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: data/refresh-calendar
+          title: 'Refresh UBC calendar data'
+          commit-message: 'Refresh UBC calendar data'
+          body: |
+            Automated re-scrape of the UBC Vancouver Academic Calendar.
+
+            Review `data/coverage.md` for parser coverage, and check the
+            `static/data/graph.json` diff for added or removed prerequisites.
+          add-paths: |
+            data/
+            static/data/
