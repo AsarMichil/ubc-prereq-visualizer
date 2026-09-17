@@ -1,7 +1,7 @@
 # UBC Prerequisite Explorer
 
-[ubc-prereq-visualizer.vercel.app](https://ubc-prereq-visualizer.vercel.app)
-[https://ubcvis.asarmichil.com/](https://ubcvis.asarmichil.com/)
+- [ubc-prereq-visualizer.vercel.app](https://ubc-prereq-visualizer.vercel.app)
+- [https://ubcvis.asarmichil.com/](https://ubcvis.asarmichil.com/)
 
 An explorable map of course prerequisites at UBC Vancouver — 9,489 courses, 8,284 links.
 
