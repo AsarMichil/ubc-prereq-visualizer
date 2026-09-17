@@ -109,9 +109,18 @@ describe('groupSatisfied', () => {
 		expect(groupSatisfied(conditionOnly, new Set())).toBe(true);
 	});
 
-	it('counts a compound as chosen when any of its courses is selected', () => {
-		const [group] = groupsFor('Either (a) BIOL 200 and one of BIOL 233; or (b) FRST 302');
-		expect(groupSatisfied(group, new Set(['BIOL 200']))).toBe(true);
+	// A compound is satisfied by its own structure, not by any course inside it:
+	// "AI 240 and one of six" needs AI 240 plus one of the six, not one tick.
+	it('counts a compound only once its nested structure is satisfied', () => {
+		const [group] = groupsFor(
+			'Either CPSC 340 or both (a) AI 240 and (b) one of STAT 251, ECON 325'
+		);
+
+		expect(groupSatisfied(group, new Set(['AI 240']))).toBe(false);
+		expect(groupSatisfied(group, new Set(['STAT 251']))).toBe(false);
+		expect(groupSatisfied(group, new Set(['AI 240', 'STAT 251']))).toBe(true);
+		// The other branch of the choice still satisfies it on its own.
+		expect(groupSatisfied(group, new Set(['CPSC 340']))).toBe(true);
 	});
 });
 

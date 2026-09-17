@@ -171,7 +171,10 @@ export function groupSatisfied(group: RequirementGroup, selected: Set<string>): 
 	const chosen = selectable.filter((option) =>
 		option.kind === 'course'
 			? selected.has(option.code)
-			: option.courses.some((c) => selected.has(c))
+			: // A compound counts only when its own structure is satisfied. Treating
+				// "any course inside it" as enough would mark "AI 240 and one of six"
+				// complete after a single tick on one of the six.
+				groupSatisfied(option.group, selected)
 	).length;
 
 	return group.kind === 'required' ? chosen === selectable.length : chosen >= group.n;

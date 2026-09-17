@@ -10,7 +10,8 @@
 	import type { ExplorerState } from '$lib/state/explorer.svelte';
 	import { displayGroups, groupSatisfied } from '$lib/graph/requirementGroups';
 	import BuilderCanvas from './BuilderCanvas.svelte';
-	import { hopColor, hopSwatches, INK } from '$lib/graph/palette';
+	import RequirementRows from './RequirementRows.svelte';
+	import { hopSwatches } from '$lib/graph/palette';
 
 	let { builder, explorer }: { builder: PathBuilderState; explorer: ExplorerState } = $props();
 
@@ -137,64 +138,14 @@
 						No prerequisites — this is an entry point.
 					</p>
 				{:else}
-					<div class="mt-4 flex flex-col gap-4">
-						{#each rowsToShow as group (group.id)}
-							{@const already = group.satisfiedBy.length > 0}
-							{@const met = already || groupSatisfied(group, pickedSet)}
-							<div>
-								<p class="mb-1.5 text-[11px] font-semibold tracking-wide uppercase">
-									<span style:color={met ? hopColor(1, theme) : INK[theme].secondary}>
-										{group.kind === 'required' ? 'Required' : `Choose ${group.n}`}
-									</span>
-									{#if met}<span class="text-[var(--ink-muted)]">· ✓</span>{/if}
-								</p>
-
-								{#if already}
-									<p class="px-2 py-1 font-mono text-xs text-[var(--ink-secondary)]">
-										Met by {group.satisfiedBy.join(', ')}
-									</p>
-								{/if}
-
-								{#if group.unavailable}
-									<p class="px-2 py-1 text-xs text-[var(--ink-secondary)] italic">
-										Only satisfiable by a UBC Okanagan course, which isn't offered here.
-									</p>
-								{/if}
-
-								<div class="flex flex-col gap-1">
-									{#each group.visible as option, index (option.label + index)}
-										{#if option.kind === 'condition'}
-											<p class="px-2 py-1 text-xs text-[var(--ink-secondary)] italic">
-												{option.label}
-											</p>
-										{:else if option.kind === 'highSchool'}
-											<p class="px-2 py-1 text-xs text-[var(--ink-secondary)]">
-												{option.label}
-												<span class="text-[var(--ink-muted)]">· high school</span>
-											</p>
-										{:else}
-											{@const codes = option.kind === 'course' ? [option.code] : option.courses}
-											<label
-												class="flex cursor-pointer items-start gap-2 rounded px-2 py-1 text-xs hover:bg-[var(--chip)]"
-												title={option.label}
-											>
-												<input
-													type="checkbox"
-													class="mt-0.5 shrink-0"
-													checked={codes.some((c) => pickedSet.has(c))}
-													onchange={() => codes.forEach((c) => selectable(c) && toggle(c))}
-												/>
-												<!-- UBC writes some requirements as one long run-on clause;
-												     clamp it and keep the full text in the tooltip. -->
-												<span class="line-clamp-2 min-w-0 font-mono break-words"
-													>{option.label}</span
-												>
-											</label>
-										{/if}
-									{/each}
-								</div>
-							</div>
-						{/each}
+					<div class="mt-4">
+						<RequirementRows
+							groups={builder.groups}
+							{drawn}
+							picked={pickedSet}
+							{theme}
+							onToggle={toggle}
+						/>
 					</div>
 				{/if}
 			{:else if builder.forward.length === 0}
