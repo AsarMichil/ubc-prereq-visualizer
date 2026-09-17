@@ -103,7 +103,11 @@
 						type="button"
 						title="Remove this course, and anything left stranded by it"
 						class="rounded px-2 py-1 text-xs text-[var(--ink-secondary)] hover:bg-[var(--chip)]"
-						onclick={() => builder.remove(expandingNode.code)}>Remove</button
+						onclick={() => {
+							builder.remove(expandingNode.code);
+							// Drop the selection too, so searching this course again re-adds it.
+							if (explorer.focus === expandingNode.code) explorer.focus = null;
+						}}>Remove</button
 					>
 					<button
 						type="button"

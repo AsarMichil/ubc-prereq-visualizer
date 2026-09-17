@@ -65,10 +65,7 @@
 	 */
 	$effect(() => {
 		if (mode !== 'build') return;
-		const focus = explorer.focus;
-		if (!focus) return;
-		if (builder.has(focus)) void builder.expand(focus, 'back');
-		else builder.addRoot(focus);
+		builder.syncFocus(explorer.focus);
 	});
 
 	const swatches = $derived(yearSwatches(explorer.theme));

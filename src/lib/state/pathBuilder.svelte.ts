@@ -59,6 +59,8 @@ export class PathBuilderState {
 	detail = $state<CourseDetail | null>(null);
 
 	private graph: Graph<CourseAttributes, EdgeAttributes> | null = null;
+	/** The focus value already reacted to; see syncFocus. */
+	private handledFocus: string | null = null;
 
 	attach(graph: Graph<CourseAttributes, EdgeAttributes>): void {
 		this.graph = graph;
@@ -161,7 +163,24 @@ export class PathBuilderState {
 		void this.expand(code, 'back');
 	}
 
+	/**
+	 * Reacts to the focused course changing.
+	 *
+	 * Guarded on the value genuinely changing, because the caller's effect also
+	 * depends on the drawn set. Without the guard, removing the focused course
+	 * re-ran this with the same code, found it no longer drawn, and added it
+	 * straight back - so Remove appeared to do nothing.
+	 */
+	syncFocus(code: string | null): void {
+		if (code === this.handledFocus) return;
+		this.handledFocus = code;
+		if (!code) return;
+		if (this.has(code)) void this.expand(code, 'back');
+		else this.addRoot(code);
+	}
+
 	clear(): void {
+		this.handledFocus = null;
 		this.codes = [];
 		this.roots = [];
 		this.edges = [];
@@ -254,6 +273,10 @@ export class PathBuilderState {
 	 * old behaviour for a single tree.
 	 */
 	remove(code: string): void {
+		// Mark it handled, so a focus effect re-running with this same code cannot
+		// resurrect what was just removed.
+		this.handledFocus = code;
+
 		const codes = this.codes.filter((existing) => existing !== code);
 		const edges = this.edges.filter((edge) => edge.from !== code && edge.to !== code);
 		const roots = this.roots.filter((root) => root !== code);

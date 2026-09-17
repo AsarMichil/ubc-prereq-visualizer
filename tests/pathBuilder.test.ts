@@ -164,6 +164,65 @@ describe('PathBuilderState', () => {
 		expect(builder.codes).toContain('FREN 302');
 	});
 
+	/**
+	 * Regression: the page reacts to the focused course via an effect that also
+	 * reads the drawn set. Removing the focused course re-ran that effect with the
+	 * same code, found it undrawn, and added it back - Remove looked broken.
+	 */
+	describe('removal vs. the focus effect', () => {
+		it('does not resurrect a removed course when focus has not changed', () => {
+			const builder = builderWith();
+			builder.syncFocus('CPSC 221');
+			expect(builder.codes).toContain('CPSC 221');
+
+			builder.remove('CPSC 221');
+			// The effect re-fires with the unchanged focus value.
+			builder.syncFocus('CPSC 221');
+
+			expect(builder.codes).not.toContain('CPSC 221');
+			expect(builder.isEmpty).toBe(true);
+		});
+
+		it('re-adds the course once focus is cleared and set again', () => {
+			const builder = builderWith();
+			builder.syncFocus('CPSC 221');
+			builder.remove('CPSC 221');
+
+			// What the Remove button does: drop the selection as well.
+			builder.syncFocus(null);
+			builder.syncFocus('CPSC 221');
+
+			expect(builder.codes).toContain('CPSC 221');
+		});
+
+		it('ignores a repeated focus rather than adding twice', () => {
+			const builder = builderWith();
+			builder.syncFocus('CPSC 221');
+			builder.syncFocus('CPSC 221');
+			expect(builder.codes).toEqual(['CPSC 221']);
+			expect(builder.roots).toEqual(['CPSC 221']);
+		});
+
+		it('removes a course that is not the focused one without disturbing focus', () => {
+			const builder = builderWith();
+			builder.syncFocus('CPSC 221');
+			builder.add('CPSC 221', ['CPSC 210'], 'back');
+
+			builder.remove('CPSC 210');
+			builder.syncFocus('CPSC 221');
+
+			expect(builder.codes).toEqual(['CPSC 221']);
+		});
+
+		it('clear() forgets the handled focus so the same course can be added again', () => {
+			const builder = builderWith();
+			builder.syncFocus('CPSC 221');
+			builder.clear();
+			builder.syncFocus('CPSC 221');
+			expect(builder.codes).toContain('CPSC 221');
+		});
+	});
+
 	it('drops a whole component when its root is removed', () => {
 		const builder = builderWith();
 		builder.addRoot('CPSC 221');
