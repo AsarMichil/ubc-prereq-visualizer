@@ -1,0 +1,4 @@
+# Changes under .github/ — the workflows, and this file itself — need an
+# approving review from @AsarMichil specifically, not from any collaborator
+# with write access. Everything else in the repo reviews normally.
+/.github/ @AsarMichil
