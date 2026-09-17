@@ -62,7 +62,7 @@
 	 * rather than shown disabled - the builder's whole premise is that only what
 	 * you chose stays on screen.
 	 */
-	const drawn = $derived(new Set(builder.nodes.map((node) => node.code)));
+	const drawn = $derived(new Set(builder.codes));
 	const rowsToShow = $derived(displayGroups(builder.groups, drawn));
 
 	/** A row is met once your picks, or what is already drawn, satisfy it. */
@@ -76,7 +76,7 @@
 
 <div class="flex h-full min-h-0">
 	<div class="relative min-w-0 flex-1">
-		{#if !builder.root}
+		{#if builder.isEmpty}
 			<div class="grid h-full place-items-center p-8 text-center">
 				<div class="max-w-sm">
 					<h2 class="text-base font-semibold">Build a path</h2>
@@ -99,14 +99,12 @@
 			<div class="flex items-start justify-between gap-2">
 				<h2 class="font-mono text-sm font-semibold">{expandingNode.code}</h2>
 				<div class="flex items-center gap-1">
-					{#if expandingNode.code !== builder.root}
-						<button
-							type="button"
-							title="Remove this course and everything beyond it"
-							class="rounded px-2 py-1 text-xs text-[var(--ink-secondary)] hover:bg-[var(--chip)]"
-							onclick={() => builder.remove(expandingNode.code)}>Remove</button
-						>
-					{/if}
+					<button
+						type="button"
+						title="Remove this course, and anything left stranded by it"
+						class="rounded px-2 py-1 text-xs text-[var(--ink-secondary)] hover:bg-[var(--chip)]"
+						onclick={() => builder.remove(expandingNode.code)}>Remove</button
+					>
 					<button
 						type="button"
 						class="rounded px-2 py-1 text-xs text-[var(--ink-secondary)] hover:bg-[var(--chip)]"
@@ -212,7 +210,7 @@
 </div>
 
 <!-- Legend: colour means hop distance here, not year level. -->
-{#if builder.root}
+{#if !builder.isEmpty}
 	<div
 		class="pointer-events-none absolute bottom-3 left-6 flex gap-3 rounded border border-[var(--line)] bg-[var(--surface)]/90 px-3 py-1.5 text-[11px]"
 	>

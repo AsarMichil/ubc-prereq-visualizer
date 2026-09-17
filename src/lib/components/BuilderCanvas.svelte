@@ -119,8 +119,8 @@
 	 * somewhere unrelated.
 	 */
 	$effect(() => {
-		const nodes = builder.nodes;
-		const links = builder.links;
+		const nodes = builder.tiers;
+		const links = builder.edges;
 		const currentTheme = theme;
 		if (!ready || !renderer) return;
 
@@ -135,10 +135,15 @@
 				graph.mergeNodeAttributes(node.code, { color: colour, tier: node.tier });
 				continue;
 			}
-			const seed =
-				node.parent && graph.hasNode(node.parent)
-					? graph.getNodeAttributes(node.parent)
-					: { x: 0, y: 0 };
+			// Grow outward from whichever drawn course this one connects to, so a new
+			// node appears beside its relation rather than flying in from the origin.
+			const anchor = links.find(
+				(link) =>
+					(link.to === node.code && graph.hasNode(link.from)) ||
+					(link.from === node.code && graph.hasNode(link.to))
+			);
+			const anchorCode = anchor ? (anchor.to === node.code ? anchor.from : anchor.to) : null;
+			const seed = anchorCode ? graph.getNodeAttributes(anchorCode) : { x: 0, y: 0 };
 			graph.addNode(node.code, {
 				label: node.code,
 				x: seed.x,
@@ -186,7 +191,7 @@
 <div class="relative h-full w-full">
 	<div bind:this={container} class="h-full w-full"></div>
 
-	{#if builder.nodes.length <= 1}
+	{#if builder.codes.length <= 1}
 		<p
 			class="pointer-events-none absolute inset-x-0 bottom-10 text-center text-xs"
 			style:color={INK[theme].secondary}

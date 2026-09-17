@@ -58,10 +58,17 @@
 		replaceState(query ? resolve(`/?${query}`) : resolve('/'), {});
 	});
 
+	/**
+	 * Searching in build mode adds to what is already drawn rather than replacing
+	 * it. A course that relates to something on screen joins that component; one
+	 * that doesn't starts its own. An already-drawn course just opens its panel.
+	 */
 	$effect(() => {
 		if (mode !== 'build') return;
 		const focus = explorer.focus;
-		if (focus && focus !== builder.root) builder.start(focus);
+		if (!focus) return;
+		if (builder.has(focus)) void builder.expand(focus, 'back');
+		else builder.addRoot(focus);
 	});
 
 	const swatches = $derived(yearSwatches(explorer.theme));
@@ -104,6 +111,19 @@
 		</div>
 
 		<div class="max-w-md flex-1"><SearchBox {explorer} /></div>
+
+		{#if mode === 'build' && !builder.isEmpty}
+			<button
+				type="button"
+				class="rounded border border-[var(--line)] px-2.5 py-1 text-xs whitespace-nowrap hover:bg-[var(--chip)]"
+				onclick={() => {
+					builder.clear();
+					explorer.focus = null;
+				}}
+			>
+				Clear {builder.codes.length}
+			</button>
+		{/if}
 
 		<div class="ml-auto flex items-center gap-4 text-xs text-[var(--ink-secondary)]">
 			<!-- Legend: identity is never colour alone, so the swatches are labelled. -->
