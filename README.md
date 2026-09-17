@@ -1,42 +1,28 @@
-# sv
+# UBC Prerequisite Explorer
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+[ubc-prereq-visualizer.vercel.app](https://ubc-prereq-visualizer.vercel.app)
 
-## Creating a project
+An explorable map of course prerequisites at UBC Vancouver — 9,489 courses, 8,284 links.
 
-If you're seeing this, you've probably already done this step. Congrats!
+- **Explore** draws the whole map at once, filtered by year, faculty or subject.
+- **Build a path** draws only what you pick, growing outward from a course toward what it requires or unlocks.
 
-```sh
-# create a new project
-npx sv create my-app
-```
+## Data
 
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-bun x sv@0.17.0 create --template minimal --types ts --add prettier eslint tailwindcss="plugins:none" sveltekit-adapter="adapter:auto" ai-tools="ide:claude-code+delivery:plugin" --install bun .
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+UBC publishes no structured prerequisite data, so `scripts/` snapshots the Academic
+Calendar's JSON:API and parses requirements out of the description prose into AND/OR
+trees. The snapshot and the built artifacts are both committed, so a re-scrape shows
+up as a reviewable diff of what changed.
 
 ```sh
-npm run dev
+bun install
+bun run dev
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+bun run scrape      # re-snapshot the calendar (~5 min, hits UBC's API)
+bun run build:data  # re-parse into static/data, and report parser coverage
 ```
 
-## Building
+SvelteKit, Sigma.js/WebGL, Tailwind. The layout is baked at build time, so the browser
+never runs a layout algorithm.
 
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+Conventions, commands and gotchas: [CLAUDE.md](CLAUDE.md).
