@@ -161,6 +161,20 @@ export class PathBuilderState {
 		void this.expand(code, 'back');
 	}
 
+	/**
+	 * Handles a course being chosen - from the search box, or from the canvas.
+	 *
+	 * Called directly from an event handler, never from an effect. An earlier
+	 * version reacted to a `focus` value inside an `$effect` that also read the
+	 * drawn set, so removing the focused course re-ran it, found the course
+	 * undrawn, and added it straight back. Driving it from the interaction that
+	 * caused it removes that feedback loop rather than guarding against it.
+	 */
+	select(code: string): void {
+		if (this.has(code)) void this.expand(code, 'back');
+		else this.addRoot(code);
+	}
+
 	clear(): void {
 		this.codes = [];
 		this.roots = [];

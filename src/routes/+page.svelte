@@ -9,12 +9,17 @@
 	import CourseDetail from '$lib/components/CourseDetail.svelte';
 	import PathBuilder from '$lib/components/PathBuilder.svelte';
 	import { PathBuilderState } from '$lib/state/pathBuilder.svelte';
+	import { setBuilder, setExplorer } from '$lib/state/context';
 	import { loadMap } from '$lib/graph/loadGraph';
 	import { ExplorerState } from '$lib/state/explorer.svelte';
 	import { FOCUS_COLORS, yearSwatches, type Theme } from '$lib/graph/palette';
 
 	const explorer = new ExplorerState();
 	const builder = new PathBuilderState();
+
+	// Shared through context rather than threaded down as props.
+	setExplorer(explorer);
+	setBuilder(builder);
 
 	/**
 	 * Two ways in. `explore` is the whole map - every course at once, for seeing
@@ -59,17 +64,26 @@
 	});
 
 	/**
-	 * Searching in build mode adds to what is already drawn rather than replacing
-	 * it. A course that relates to something on screen joins that component; one
-	 * that doesn't starts its own. An already-drawn course just opens its panel.
+	 * A course was chosen. Called from the interaction that caused it rather than
+	 * from an effect watching `explorer.focus` - an effect there also depended on
+	 * the builder's drawn set, so removing a course re-ran it and put the course
+	 * straight back.
+	 *
+	 * In build mode the choice adds to what is drawn: a course related to
+	 * something on screen joins that component, one that isn't starts its own.
 	 */
-	$effect(() => {
-		if (mode !== 'build') return;
-		const focus = explorer.focus;
-		if (!focus) return;
-		if (builder.has(focus)) void builder.expand(focus, 'back');
-		else builder.addRoot(focus);
-	});
+	function selectCourse(code: string): void {
+		if (mode === 'build') builder.select(code);
+		else explorer.focus = code;
+	}
+
+	function setMode(next: 'explore' | 'build'): void {
+		mode = next;
+		// Carry a course chosen on the map over into the builder.
+		if (next === 'build' && explorer.focus && !builder.has(explorer.focus)) {
+			builder.select(explorer.focus);
+		}
+	}
 
 	const swatches = $derived(yearSwatches(explorer.theme));
 	const focusColors = $derived(FOCUS_COLORS[explorer.theme]);
@@ -105,12 +119,12 @@
 					class="rounded px-2.5 py-1"
 					style:background={mode === value ? 'var(--chip-active)' : 'transparent'}
 					aria-pressed={mode === value}
-					onclick={() => (mode = value as 'explore' | 'build')}>{label}</button
+					onclick={() => setMode(value as 'explore' | 'build')}>{label}</button
 				>
 			{/each}
 		</div>
 
-		<div class="max-w-md flex-1"><SearchBox {explorer} /></div>
+		<div class="max-w-md flex-1"><SearchBox onSelect={selectCourse} /></div>
 
 		{#if mode === 'build' && !builder.isEmpty}
 			<button
@@ -146,7 +160,7 @@
 			<aside
 				class="w-64 shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-4"
 			>
-				<FilterPanel {explorer} />
+				<FilterPanel />
 			</aside>
 		{/if}
 
@@ -162,9 +176,9 @@
 					</div>
 				</div>
 			{:else if explorer.map && mode === 'build'}
-				<PathBuilder {builder} {explorer} />
+				<PathBuilder />
 			{:else if explorer.map}
-				<GraphCanvas {explorer} />
+				<GraphCanvas />
 
 				{#if explorer.hasFocus}
 					<div
@@ -188,7 +202,7 @@
 		</main>
 
 		{#if mode === 'explore'}
-			<CourseDetail {explorer} />
+			<CourseDetail />
 		{/if}
 	</div>
 </div>

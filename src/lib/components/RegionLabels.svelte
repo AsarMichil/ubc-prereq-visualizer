@@ -7,16 +7,16 @@
 	 * individual course labels (drawn by Sigma itself) appear. It also carries the
 	 * faculty identity that colour deliberately does not.
 	 */
-	import type { ExplorerState } from '$lib/state/explorer.svelte';
+	import { getExplorer } from '$lib/state/context';
 
 	let {
-		explorer,
 		project
 	}: {
-		explorer: ExplorerState;
 		/** Maps baked map coordinates to viewport pixels. */
 		project: ((point: { x: number; y: number }) => { x: number; y: number }) | null;
 	} = $props();
+
+	const explorer = getExplorer();
 
 	interface Region {
 		key: string;

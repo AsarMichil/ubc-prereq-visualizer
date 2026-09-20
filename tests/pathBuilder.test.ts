@@ -164,6 +164,59 @@ describe('PathBuilderState', () => {
 		expect(builder.codes).toContain('FREN 302');
 	});
 
+	/**
+	 * The original bug: the page reacted to the focused course inside an $effect
+	 * that also read the drawn set, so removing the focused course re-ran it and
+	 * added the course back. Selection is now driven from the event that caused
+	 * it, so that feedback loop cannot form - these cover the semantics that
+	 * replaced it.
+	 */
+	describe('select', () => {
+		it('adds a course that is not drawn yet', () => {
+			const builder = builderWith();
+			builder.select('CPSC 221');
+			expect(builder.codes).toEqual(['CPSC 221']);
+			expect(builder.roots).toEqual(['CPSC 221']);
+		});
+
+		it('does not duplicate a course that is already drawn', () => {
+			const builder = builderWith();
+			builder.select('CPSC 221');
+			builder.select('CPSC 221');
+			expect(builder.codes).toEqual(['CPSC 221']);
+			expect(builder.roots).toEqual(['CPSC 221']);
+		});
+
+		// The invariant that matters: nothing puts a removed course back on its own.
+		it('leaves a removed course removed until it is selected again', () => {
+			const builder = builderWith();
+			builder.select('CPSC 221');
+			builder.remove('CPSC 221');
+			expect(builder.isEmpty).toBe(true);
+
+			// Only an explicit selection brings it back.
+			builder.select('CPSC 221');
+			expect(builder.codes).toContain('CPSC 221');
+		});
+
+		it('removes a course that is not the selected one without disturbing the rest', () => {
+			const builder = builderWith();
+			builder.select('CPSC 221');
+			builder.add('CPSC 221', ['CPSC 210'], 'back');
+
+			builder.remove('CPSC 210');
+			expect(builder.codes).toEqual(['CPSC 221']);
+		});
+
+		it('can select the same course again after clear()', () => {
+			const builder = builderWith();
+			builder.select('CPSC 221');
+			builder.clear();
+			builder.select('CPSC 221');
+			expect(builder.codes).toContain('CPSC 221');
+		});
+	});
+
 	it('drops a whole component when its root is removed', () => {
 		const builder = builderWith();
 		builder.addRoot('CPSC 221');

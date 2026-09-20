@@ -3,10 +3,10 @@
 	 * Filters are visual, not structural: every control here changes how nodes are
 	 * painted, never where they sit, so the map never reflows under the user.
 	 */
-	import type { ExplorerState } from '$lib/state/explorer.svelte';
+	import { getExplorer } from '$lib/state/context';
 	import { YEAR_TIERS, yearSwatches } from '$lib/graph/palette';
 
-	let { explorer }: { explorer: ExplorerState } = $props();
+	const explorer = getExplorer();
 
 	const swatches = $derived(yearSwatches(explorer.theme));
 	const subjects = $derived(explorer.map?.subjects ?? []);

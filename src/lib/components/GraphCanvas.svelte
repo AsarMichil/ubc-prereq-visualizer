@@ -12,7 +12,7 @@
 	import { layeredLayout } from '$lib/graph/layered';
 	import type Sigma from 'sigma';
 	import type { CourseAttributes, EdgeAttributes } from '$lib/graph/loadGraph';
-	import type { ExplorerState } from '$lib/state/explorer.svelte';
+	import { getExplorer } from '$lib/state/context';
 	import RegionLabels from './RegionLabels.svelte';
 	import {
 		DIMMED,
@@ -25,7 +25,7 @@
 	} from '$lib/graph/palette';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
 
-	let { explorer }: { explorer: ExplorerState } = $props();
+	const explorer = getExplorer();
 
 	let container: HTMLDivElement;
 	let renderer: Sigma<CourseAttributes, EdgeAttributes> | undefined;
@@ -364,7 +364,7 @@
 <div class="relative h-full w-full">
 	<div bind:this={container} class="h-full w-full"></div>
 
-	<RegionLabels {explorer} {project} />
+	<RegionLabels {project} />
 
 	{#if !ready}
 		<div

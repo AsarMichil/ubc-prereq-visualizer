@@ -14,13 +14,14 @@
 	import Graph from 'graphology';
 	import type Sigma from 'sigma';
 	import { animateNodes } from 'sigma/utils';
-	import type { PathBuilderState } from '$lib/state/pathBuilder.svelte';
-	import type { Theme } from '$lib/graph/palette';
+	import { getBuilder, getExplorer } from '$lib/state/context';
 	import { EDGE_COLOR, hopColor, INK, SURFACE } from '$lib/graph/palette';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
 	import { tieredLayout } from '$lib/graph/layered';
 
-	let { builder, theme }: { builder: PathBuilderState; theme: Theme } = $props();
+	const builder = getBuilder();
+	const explorer = getExplorer();
+	const theme = $derived(explorer.theme);
 
 	interface BuilderNode {
 		label: string;

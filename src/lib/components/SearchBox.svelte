@@ -1,8 +1,17 @@
 <script lang="ts">
-	/** Type-ahead over course codes and titles; selecting one focuses the map. */
-	import type { ExplorerState } from '$lib/state/explorer.svelte';
+	/**
+	 * Type-ahead over course codes and titles.
+	 *
+	 * Reports the choice rather than writing state itself, so the page can decide
+	 * what selecting means in the current mode. Previously it set `explorer.focus`
+	 * and an effect elsewhere reacted, which coupled search to the builder's
+	 * drawn set.
+	 */
+	import { getExplorer } from '$lib/state/context';
 
-	let { explorer }: { explorer: ExplorerState } = $props();
+	let { onSelect }: { onSelect: (code: string) => void } = $props();
+
+	const explorer = getExplorer();
 
 	let term = $state('');
 	let open = $state(false);
@@ -26,7 +35,7 @@
 	});
 
 	function choose(code: string): void {
-		explorer.focus = code;
+		onSelect(code);
 		term = code;
 		open = false;
 	}
