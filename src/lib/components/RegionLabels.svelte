@@ -36,8 +36,24 @@
 		if (tier === 'near') return [];
 
 		if (tier === 'far') {
-			// Faculty boxes come from the baked layout, so a label always sits over
-			// the region it names.
+			// In the relatedness layout the regions are communities, named after the
+			// subjects that dominate them; in the faculty layout they are faculties.
+			if (explorer.layout === 'related') {
+				// Only the substantial clusters get a name, and it sits above the
+				// cluster rather than over it: centred labels are wider than the gaps
+				// between clusters, so they overlapped their neighbours.
+				return map.payload.communities
+					.filter((community) => community.size >= 60)
+					.sort((a, b) => b.size - a.size)
+					.slice(0, 16)
+					.map((community) => ({
+						key: `c${community.id}`,
+						label: community.label,
+						...project({ x: community.x, y: -community.y - community.radius * 1.12 }),
+						emphasis: true
+					}));
+			}
+
 			return map.payload.facultyBoxes.map((box) => ({
 				key: box.name,
 				label: box.name.replace(/^Faculty of /, ''),
@@ -46,7 +62,10 @@
 			}));
 		}
 
-		// Mid zoom: name the subjects, skipping tiny ones so labels don't collide.
+		// Mid zoom: name the subjects. Only meaningful in the faculty layout, where
+		// a subject occupies one contiguous block.
+		if (explorer.layout === 'related') return [];
+
 		return map.subjects
 			.filter((subject) => subject.courses >= 6)
 			.map((subject) => ({

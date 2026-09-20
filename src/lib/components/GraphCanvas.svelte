@@ -14,15 +14,7 @@
 	import type { CourseAttributes, EdgeAttributes } from '$lib/graph/loadGraph';
 	import { getExplorer } from '$lib/state/context';
 	import RegionLabels from './RegionLabels.svelte';
-	import {
-		DIMMED,
-		EDGE_COLOR,
-		FOCUS_COLORS,
-		GHOST_COLOR,
-		INK,
-		SURFACE,
-		yearColor
-	} from '$lib/graph/palette';
+	import { DIMMED, EDGE_COLOR, GHOST_COLOR, INK, SURFACE, yearColor } from '$lib/graph/palette';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
 
 	const explorer = getExplorer();
@@ -113,14 +105,11 @@
 		const hasFocus = explorer.hasFocus;
 		const neighbourhood = explorer.focusNeighbourhood;
 		const focus = explorer.focus;
-		const prerequisites = explorer.focusSets.prerequisites;
-		const unlocks = explorer.focusSets.unlocks;
 		const tier = explorer.tier;
 
 		const dim = DIMMED[theme];
 		const ghost = GHOST_COLOR[theme];
 		const edgeBase = EDGE_COLOR[theme];
-		const focusColors = FOCUS_COLORS[theme];
 
 		instance.setSetting('nodeReducer', (code, data) => {
 			const shown = visible.has(code);
@@ -131,24 +120,17 @@
 			let color = data.ghost ? ghost : yearColor(data.number, theme);
 			let zIndex = 0;
 
+			// Out of scope: recede almost into the surface. Selection reads as the
+			// rest of the map stepping back, not as the neighbourhood lighting up.
 			if (!shown || !inFocus) {
-				return { ...data, size: Math.max(size * 0.55, 1.5), color: dim, label: '', zIndex: -1 };
+				return { ...data, size: Math.max(size * 0.4, 1), color: dim, label: '', zIndex: -1 };
 			}
 
-			if (hasFocus) {
-				if (code === focus) {
-					color = focusColors.selected;
-					size = Math.max(size, 12);
-					zIndex = 3;
-				} else if (prerequisites.has(code)) {
-					color = focusColors.prerequisite;
-					size = Math.max(size, 7);
-					zIndex = 2;
-				} else if (unlocks.has(code)) {
-					color = focusColors.unlocks;
-					size = Math.max(size, 7);
-					zIndex = 2;
-				}
+			// In scope: neighbours keep their ordinary year colour and size. Only the
+			// selected course is marked, and only with a ring.
+			if (hasFocus && code === focus) {
+				size = Math.max(size, 9);
+				zIndex = 3;
 			}
 
 			return {
@@ -172,22 +154,41 @@
 				return { ...data, hidden: true };
 			}
 
-			let color = edgeBase;
-			if (hasFocus) {
-				if (target === focus || prerequisites.has(target)) color = focusColors.prerequisite;
-				else if (source === focus || unlocks.has(source)) color = focusColors.unlocks;
-			}
-
 			return {
 				...data,
-				color,
-				size: hasFocus ? 1.6 : 0.7,
+				color: edgeBase,
+				size: hasFocus ? 1.1 : 0.7,
 				// Alternatives from the same "one of" are drawn dashed as a set.
 				type: data.groupId ? 'line' : 'line'
 			};
 		});
 
 		instance.refresh({ skipIndexation: true });
+	});
+
+	/**
+	 * Swaps node positions when the layout changes.
+	 *
+	 * Both arrangements are baked into the payload, so this only moves nodes
+	 * between two known coordinate sets - no layout is computed here. The camera
+	 * is left alone: the extents are comparable, and keeping it steady makes the
+	 * two arrangements directly comparable.
+	 */
+	$effect(() => {
+		const layout = explorer.layout;
+		if (!ready || !renderer || !explorer.map) return;
+
+		const graph = explorer.map.graph;
+		const targets: Record<string, { x: number; y: number }> = {};
+		graph.forEachNode((code, data) => {
+			targets[code] =
+				layout === 'related'
+					? { x: data.clusterX, y: data.clusterY }
+					: { x: data.baseX, y: data.baseY };
+		});
+
+		const instance = renderer;
+		animateNodes(graph, targets, { duration: 600 }, () => instance.refresh());
 	});
 
 	$effect(() => {
@@ -344,6 +345,24 @@
 		return () => cancelAnimationFrame(frame);
 	});
 
+	/**
+	 * Where to draw the ring marking the selected course.
+	 *
+	 * A DOM overlay rather than a node border: Sigma's default renderer draws no
+	 * outline, and one absolutely-positioned element is lighter than pulling in a
+	 * custom node program for a single marker.
+	 */
+	const focusRing = $derived.by(() => {
+		void viewportVersion;
+		if (!ready || !renderer || !explorer.hasFocus || !explorer.focus) return null;
+		const graph = explorer.map?.graph;
+		if (!graph?.hasNode(explorer.focus)) return null;
+		// graphToViewport takes *graph* coordinates. Passing display data here
+		// double-converts, because those are already normalized.
+		const { x, y } = graph.getNodeAttributes(explorer.focus);
+		return renderer.graphToViewport({ x, y });
+	});
+
 	/** Projects baked map coordinates into viewport pixels for the label overlay. */
 	const project = $derived.by(() => {
 		void viewportVersion;
@@ -365,6 +384,19 @@
 	<div bind:this={container} class="h-full w-full"></div>
 
 	<RegionLabels {project} />
+
+	{#if focusRing}
+		<span
+			class="pointer-events-none absolute rounded-full border-2"
+			style:left="{focusRing.x}px"
+			style:top="{focusRing.y}px"
+			style:width="26px"
+			style:height="26px"
+			style:transform="translate(-50%, -50%)"
+			style:border-color={INK[explorer.theme].primary}
+			style:opacity="0.75"
+		></span>
+	{/if}
 
 	{#if !ready}
 		<div

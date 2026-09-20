@@ -39,6 +39,13 @@ export class ExplorerState {
 	showGhosts = $state(false);
 	query = $state('');
 
+	/**
+	 * Which baked arrangement is showing. `faculty` is the org chart; `related`
+	 * positions courses by what they actually connect to. Both are precomputed,
+	 * so switching never runs a layout.
+	 */
+	layout = $state<'faculty' | 'related'>('faculty');
+
 	focus = $state<string | null>(null);
 	depth = $state(2);
 	/** When on, the focused neighbourhood is redrawn as a clean layered chain. */
@@ -146,6 +153,7 @@ export class ExplorerState {
 		this.query = '';
 		this.focus = null;
 		this.straighten = false;
+		this.layout = 'faculty';
 	}
 
 	/** Serializes the current view so any state is shareable as a URL. */
@@ -159,6 +167,7 @@ export class ExplorerState {
 		if (this.focus && this.depth !== 2) params.set('depth', String(this.depth));
 		if (this.hideIsolated) params.set('connected', '1');
 		if (this.showGhosts) params.set('ghosts', '1');
+		if (this.layout !== 'faculty') params.set('layout', this.layout);
 		return params;
 	}
 
@@ -177,6 +186,7 @@ export class ExplorerState {
 		if (Number.isInteger(depth) && depth >= 1 && depth <= 4) this.depth = depth;
 		this.hideIsolated = params.get('connected') === '1';
 		this.showGhosts = params.get('ghosts') === '1';
+		if (params.get('layout') === 'related') this.layout = 'related';
 	}
 }
 

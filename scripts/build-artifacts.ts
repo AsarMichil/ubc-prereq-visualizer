@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { brotliCompressSync } from 'node:zlib';
 import type { Course, RequirementNode } from '../src/lib/types.ts';
 import { buildCoverage, formatCoverage, type ClauseSample } from './lib/coverage.ts';
+import { clusterLayout } from './lib/clusterLayout.ts';
 import { layoutMap } from './lib/layoutMap.ts';
 import { loadRaw } from './lib/loadRaw.ts';
 import { buildModel, iterateRefs } from './lib/model.ts';
@@ -183,7 +184,19 @@ async function main(): Promise<void> {
 	console.log('\nLaying out the map...');
 	const started = Date.now();
 	const layout = layoutMap({ bySubject, edges: prereqPairs, subjectOf, facultyOf });
-	console.log(`Layout done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+
+	// A second arrangement of the same courses, positioned by what they actually
+	// connect to rather than by which faculty owns them. Both are baked so the
+	// client can swap between them without ever running a layout.
+	const clustered = clusterLayout({
+		codes: allNodes.map((node) => node.code),
+		edges: prereqPairs,
+		subjectOf
+	});
+	console.log(
+		`Layout done in ${((Date.now() - started) / 1000).toFixed(1)}s ` +
+			`(${clustered.communities.length} relatedness communities)`
+	);
 
 	// --- Encode ------------------------------------------------------------
 	const subjectCodes = [...bySubject.keys()].sort();
@@ -201,6 +214,7 @@ async function main(): Promise<void> {
 	const nodes = nodeOrder.map((node) => {
 		const course = courseByCode.get(node.code);
 		const point = layout.positions.get(node.code) ?? { x: 0, y: 0 };
+		const cluster = clustered.positions.get(node.code) ?? { x: 0, y: 0 };
 		return [
 			node.code,
 			course?.title ?? '',
@@ -210,7 +224,10 @@ async function main(): Promise<void> {
 			course?.credits.max ?? 0,
 			round(point.x),
 			round(point.y),
-			node.flags
+			node.flags,
+			round(cluster.x),
+			round(cluster.y),
+			clustered.communityOf.get(node.code) ?? -1
 		];
 	});
 
@@ -238,6 +255,16 @@ async function main(): Promise<void> {
 			y: round(box.y),
 			width: round(box.width),
 			height: round(box.height)
+		})),
+		// Region labels for the relatedness layout, named after their dominant
+		// subjects - the equivalent of facultyBoxes for the other arrangement.
+		communities: clustered.communities.map((community) => ({
+			id: community.id,
+			label: community.label,
+			x: round(community.x),
+			y: round(community.y),
+			size: community.size,
+			radius: round(community.radius)
 		})),
 		nodes,
 		edges: encodedEdges,

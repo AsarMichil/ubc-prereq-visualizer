@@ -10,7 +10,20 @@ import Graph from 'graphology';
 export const FLAG_GHOST = 1;
 export const FLAG_OTHER_CAMPUS = 2;
 
-type NodeTuple = [string, string, number, number, number, number, number, number, number];
+type NodeTuple = [
+	string, // code
+	string, // title
+	number, // subject index
+	number, // course number
+	number, // credit min
+	number, // credit max
+	number, // faculty-layout x
+	number, // faculty-layout y
+	number, // flags
+	number, // relatedness-layout x
+	number, // relatedness-layout y
+	number // community id, -1 when the course has no prerequisite links
+];
 type EdgeTuple = [number, number, 0 | 1, string | null];
 
 export interface GraphPayload {
@@ -20,6 +33,14 @@ export interface GraphPayload {
 	faculties: string[];
 	subjectFaculty: number[];
 	facultyBoxes: { name: string; x: number; y: number; width: number; height: number }[];
+	communities: {
+		id: number;
+		label: string;
+		x: number;
+		y: number;
+		size: number;
+		radius: number;
+	}[];
 	nodes: NodeTuple[];
 	edges: EdgeTuple[];
 	equivalences: number[][];
@@ -48,8 +69,16 @@ export interface CourseAttributes {
 	creditMax: number;
 	ghost: boolean;
 	otherCampus: boolean;
+	/** The live position Sigma renders; animated between the two layouts below. */
 	x: number;
 	y: number;
+	/** Immutable copies of each baked arrangement, since `x`/`y` get overwritten. */
+	baseX: number;
+	baseY: number;
+	clusterX: number;
+	clusterY: number;
+	/** Community in the relatedness layout, or -1 for a course with no links. */
+	community: number;
 	size: number;
 	color: string;
 	/** Dependants minus prerequisites; drives node size and the "roots" filter. */
@@ -87,7 +116,20 @@ export async function loadMap(fetcher: typeof fetch = fetch): Promise<LoadedMap>
 	}
 
 	payload.nodes.forEach((tuple, index) => {
-		const [code, title, subjectIndex, number, creditMin, creditMax, x, y, flags] = tuple;
+		const [
+			code,
+			title,
+			subjectIndex,
+			number,
+			creditMin,
+			creditMax,
+			x,
+			y,
+			flags,
+			cx,
+			cy,
+			community
+		] = tuple;
 		const subject = payload.subjects[subjectIndex] ?? '';
 		const facultyIndex = payload.subjectFaculty[subjectIndex] ?? -1;
 
@@ -105,6 +147,11 @@ export async function loadMap(fetcher: typeof fetch = fetch): Promise<LoadedMap>
 			// The baked layout puts advanced courses at higher y; Sigma's y axis
 			// points down, so flip it to keep prerequisites visually below.
 			y: -y,
+			baseX: x,
+			baseY: -y,
+			clusterX: cx,
+			clusterY: -cy,
+			community,
 			size: 1,
 			color: '#888888',
 			inDegree: degrees[index * 2],

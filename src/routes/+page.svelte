@@ -12,7 +12,7 @@
 	import { setBuilder, setExplorer } from '$lib/state/context';
 	import { loadMap } from '$lib/graph/loadGraph';
 	import { ExplorerState } from '$lib/state/explorer.svelte';
-	import { FOCUS_COLORS, yearSwatches, type Theme } from '$lib/graph/palette';
+	import { yearSwatches, type Theme } from '$lib/graph/palette';
 
 	const explorer = new ExplorerState();
 	const builder = new PathBuilderState();
@@ -86,7 +86,6 @@
 	}
 
 	const swatches = $derived(yearSwatches(explorer.theme));
-	const focusColors = $derived(FOCUS_COLORS[explorer.theme]);
 	const nodeCount = $derived(explorer.map?.payload.nodes.length ?? 0);
 	const visibleCount = $derived(explorer.filtered.size);
 </script>
@@ -179,21 +178,6 @@
 				<PathBuilder />
 			{:else if explorer.map}
 				<GraphCanvas />
-
-				{#if explorer.hasFocus}
-					<div
-						class="pointer-events-none absolute bottom-3 left-3 flex gap-3 rounded border border-[var(--line)] bg-[var(--surface)]/90 px-3 py-1.5 text-xs"
-					>
-						<span class="flex items-center gap-1.5">
-							<span class="h-2.5 w-2.5 rounded-full" style:background={focusColors.prerequisite}
-							></span>needs
-						</span>
-						<span class="flex items-center gap-1.5">
-							<span class="h-2.5 w-2.5 rounded-full" style:background={focusColors.unlocks}
-							></span>unlocks
-						</span>
-					</div>
-				{/if}
 			{:else}
 				<div class="grid h-full place-items-center text-sm text-[var(--ink-secondary)]">
 					Loading {nodeCount ? '' : 'the map'}…
