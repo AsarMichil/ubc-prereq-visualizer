@@ -3,11 +3,11 @@
 	 * Detail panel for the focused course. Per-subject detail is fetched lazily —
 	 * it is far too large to ship with the map payload — and cached per subject.
 	 */
-	import type { ExplorerState } from '$lib/state/explorer.svelte';
+	import { getExplorer } from '$lib/state/context';
 	import type { RequirementNode } from '$lib/types';
 	import RequirementTree from './RequirementTree.svelte';
 
-	let { explorer }: { explorer: ExplorerState } = $props();
+	const explorer = getExplorer();
 
 	interface CourseDetailPayload {
 		title: string;

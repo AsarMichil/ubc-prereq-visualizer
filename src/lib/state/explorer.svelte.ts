@@ -21,7 +21,14 @@ const ALL_YEARS = [0, 1, 2, 3, 4];
 const UNDERGRAD_YEARS = [0, 1, 2, 3];
 
 export class ExplorerState {
-	map = $state<LoadedMap | null>(null);
+	/**
+	 * Raw, not deep: the map is assigned once on load and only ever read.
+	 *
+	 * Plain `$state` would proxy it deeply - roughly 18,000 arrays between
+	 * `payload.nodes`, `payload.edges` and `equivalences` - so every lookup during
+	 * a render would go through a proxy for reactivity we never use.
+	 */
+	map = $state.raw<LoadedMap | null>(null);
 	theme = $state<Theme>('light');
 
 	/** Year tiers (see palette.yearTier). Graduate is off by default — it is over a third of the corpus. */

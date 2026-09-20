@@ -6,14 +6,15 @@
 	 * handle alike. Per-node controls live in this panel rather than on the marks,
 	 * which is what lets the view stay a real graph instead of a list of chips.
 	 */
-	import type { PathBuilderState, Direction } from '$lib/state/pathBuilder.svelte';
-	import type { ExplorerState } from '$lib/state/explorer.svelte';
+	import type { Direction } from '$lib/state/pathBuilder.svelte';
+	import { getBuilder, getExplorer } from '$lib/state/context';
 	import { displayGroups, groupSatisfied } from '$lib/graph/requirementGroups';
 	import BuilderCanvas from './BuilderCanvas.svelte';
 	import RequirementRows from './RequirementRows.svelte';
 	import { hopSwatches } from '$lib/graph/palette';
 
-	let { builder, explorer }: { builder: PathBuilderState; explorer: ExplorerState } = $props();
+	const builder = getBuilder();
+	const explorer = getExplorer();
 
 	/** Candidate codes ticked in the open panel, not yet added to the tree. */
 	let picked = $state<string[]>([]);
@@ -87,7 +88,7 @@
 				</div>
 			</div>
 		{:else}
-			<BuilderCanvas {builder} {theme} />
+			<BuilderCanvas />
 		{/if}
 	</div>
 
