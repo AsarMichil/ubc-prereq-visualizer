@@ -267,13 +267,13 @@ export function tieredLayout(
 		link(edge.target, edge.source);
 	}
 
-	// Highest tier first: what the course unlocks sits above it, what it requires
-	// below, which is the usual direction for a prerequisite chart.
+	// Lowest tier first: prerequisites sit above the courses that need them, so
+	// the view reads top to bottom as early work down to final-year work.
 	const byTier = new Map<number, string[]>();
 	for (const node of nodes) {
 		(byTier.get(node.tier) ?? byTier.set(node.tier, []).get(node.tier)!).push(node.id);
 	}
-	const rows = [...byTier.entries()].sort((a, b) => b[0] - a[0]).map(([, ids]) => ids.sort());
+	const rows = [...byTier.entries()].sort((a, b) => a[0] - b[0]).map(([, ids]) => ids.sort());
 
 	const indexOf = new Map<string, number>();
 	const reindex = () => {
@@ -282,6 +282,7 @@ export function tieredLayout(
 	};
 	reindex();
 
+	// Order within each row to reduce edge crossings.
 	for (let sweep = 0; sweep < sweeps; sweep++) {
 		for (const row of rows) {
 			if (row.length < 2) continue;
@@ -297,19 +298,93 @@ export function tieredLayout(
 
 	const stepX = nodeWidth + xGap;
 	const stepY = nodeHeight + yGap;
-	const widest = Math.max(1, ...rows.map((row) => row.length));
-	const positions = new Map<string, { x: number; y: number }>();
 
+	/**
+	 * Horizontal placement.
+	 *
+	 * Spacing each row evenly and centring it independently pushed a course away
+	 * from its own prerequisite whenever the two rows differed in width - MATH 100
+	 * and MATH 101 could end up at opposite ends of the view. Each node is now
+	 * pulled toward the median x of the courses it connects to.
+	 *
+	 * The passes alternate direction - one considering only what a course
+	 * requires, the next only what requires it. Pulling both ways at once makes
+	 * neighbours chase each other and collapse onto a single column, or oscillate
+	 * between two arrangements and never settle.
+	 *
+	 * After each pull the row is separated to keep a minimum gap, then shifted so
+	 * its centre returns to where the pull wanted it. That gap is the tolerance:
+	 * courses sit as close to their requirements as they can without overlapping.
+	 */
+	const predecessors = new Map<string, string[]>();
+	const successors = new Map<string, string[]>();
+	for (const edge of edges) {
+		if (!present.has(edge.source) || !present.has(edge.target)) continue;
+		(predecessors.get(edge.target) ?? predecessors.set(edge.target, []).get(edge.target)!).push(
+			edge.source
+		);
+		(successors.get(edge.source) ?? successors.set(edge.source, []).get(edge.source)!).push(
+			edge.target
+		);
+	}
+
+	const x = new Map<string, number>();
+	for (const row of rows) row.forEach((id, index) => x.set(id, index * stepX));
+
+	const median = (values: number[]): number => {
+		const sorted = [...values].sort((a, b) => a - b);
+		const middle = Math.floor(sorted.length / 2);
+		return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+	};
+
+	for (let pass = 0; pass < 8; pass++) {
+		const downward = pass % 2 === 0;
+		const anchors = downward ? predecessors : successors;
+		const order = downward ? rows : [...rows].reverse();
+
+		for (const row of order) {
+			const desired = row.map((id) => {
+				const linked = (anchors.get(id) ?? [])
+					.map((other) => x.get(other))
+					.filter((value): value is number => value !== undefined);
+				return linked.length ? median(linked) : x.get(id)!;
+			});
+
+			row.forEach((id, index) => x.set(id, desired[index]));
+
+			// Separate, preserving the crossing-minimised order.
+			for (let i = 1; i < row.length; i++) {
+				const left = x.get(row[i - 1])!;
+				if (x.get(row[i])! < left + stepX) x.set(row[i], left + stepX);
+			}
+			for (let i = row.length - 2; i >= 0; i--) {
+				const right = x.get(row[i + 1])!;
+				if (x.get(row[i])! > right - stepX) x.set(row[i], right - stepX);
+			}
+
+			// Return the row's centre to where the pull asked for it.
+			if (row.length) {
+				const mean = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
+				const shift = mean(desired) - mean(row.map((id) => x.get(id)!));
+				for (const id of row) x.set(id, x.get(id)! + shift);
+			}
+		}
+	}
+
+	const allX = [...x.values()];
+	const minX = allX.length ? Math.min(...allX) : 0;
+	const maxX = allX.length ? Math.max(...allX) : 0;
+
+	const positions = new Map<string, { x: number; y: number }>();
 	rows.forEach((row, index) => {
-		const offset = ((widest - row.length) * stepX) / 2;
-		row.forEach((id, position) => {
-			positions.set(id, { x: offset + position * stepX, y: index * stepY });
-		});
+		for (const id of row) {
+			positions.set(id, { x: x.get(id)! - minX, y: index * stepY });
+		}
 	});
 
 	return {
 		positions,
-		width: widest * stepX,
+		width: Math.max(maxX - minX + stepX, stepX),
 		height: Math.max(1, rows.length) * stepY,
 		layerCount: rows.length
 	};
