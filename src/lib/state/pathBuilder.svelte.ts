@@ -23,8 +23,13 @@
  */
 import type Graph from 'graphology';
 import type { CourseAttributes, EdgeAttributes } from '../graph/loadGraph';
-import { getCourse, preloadSubjects, type CourseDetail } from '../data/courseDetail';
-import { requirementGroups, type RequirementGroup } from '../graph/requirementGroups';
+import { getCourse, peekCourse, preloadSubjects, type CourseDetail } from '../data/courseDetail';
+import {
+	displayGroups,
+	groupSatisfied,
+	requirementGroups,
+	type RequirementGroup
+} from '../graph/requirementGroups';
 
 export type Direction = 'back' | 'forward';
 
@@ -59,6 +64,8 @@ export class PathBuilderState {
 	detail = $state<CourseDetail | null>(null);
 
 	private graph: Graph<CourseAttributes, EdgeAttributes> | null = null;
+	/** Bumped when course detail finishes loading, so `unmet` recomputes. */
+	private detailsVersion = $state(0);
 
 	attach(graph: Graph<CourseAttributes, EdgeAttributes>): void {
 		this.graph = graph;
@@ -112,6 +119,41 @@ export class PathBuilderState {
 
 		return this.codes.map((code) => ({ code, tier: depth.get(code) ?? 0 }));
 	});
+
+	/**
+	 * Drawn courses whose prerequisites are not satisfied by what is drawn.
+	 *
+	 * Recomputed from the drawn set, so it follows every rebalance. A course whose
+	 * detail has not loaded yet is left unflagged rather than assumed incomplete.
+	 * Rows that nothing can satisfy - the handful whose only options are Okanagan
+	 * courses - are skipped, since flagging them would be permanent and
+	 * actionless.
+	 */
+	unmet = $derived.by(() => {
+		void this.detailsVersion;
+		const drawn = new Set(this.codes);
+		const flagged = new Set<string>();
+
+		for (const code of this.codes) {
+			const detail = peekCourse(code);
+			if (!detail?.prerequisite) continue;
+
+			const rows = displayGroups(requirementGroups(detail.prerequisite), drawn);
+			const unsatisfied = rows.some(
+				(row) => row.satisfiedBy.length === 0 && !row.unavailable && !groupSatisfied(row, drawn)
+			);
+			if (unsatisfied) flagged.add(code);
+		}
+
+		return flagged;
+	});
+
+	/** Loads detail for every drawn course so `unmet` can be evaluated. */
+	private async loadDetails(): Promise<void> {
+		const wanted = [...this.codes];
+		await preloadSubjects(wanted);
+		this.detailsVersion += 1;
+	}
 
 	tierOf(code: string): number {
 		return this.tiers.find((entry) => entry.code === code)?.tier ?? 0;
@@ -364,6 +406,10 @@ export class PathBuilderState {
 		this.edges = edges;
 		this.roots = roots;
 		if (this.expanding && !drawn.has(this.expanding.code)) this.expanding = null;
+
+		// Requirements are judged against the drawn set, so they change whenever it
+		// does; make sure the detail needed to judge them is present.
+		void this.loadDetails();
 	}
 
 	/**

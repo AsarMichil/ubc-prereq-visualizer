@@ -15,7 +15,7 @@
 	import type Sigma from 'sigma';
 	import { animateNodes } from 'sigma/utils';
 	import { getBuilder, getExplorer } from '$lib/state/context';
-	import { EDGE_COLOR, hopColor, INK, SURFACE } from '$lib/graph/palette';
+	import { EDGE_COLOR, hopColor, INCOMPLETE, INK, SURFACE } from '$lib/graph/palette';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
 	import { tieredLayout } from '$lib/graph/layered';
 
@@ -36,6 +36,10 @@
 	let renderer: Sigma<BuilderNode> | undefined;
 	let graph = new Graph<BuilderNode>({ type: 'directed' });
 	let ready = $state(false);
+	/** Cancels the in-flight position animation; see the sync effect. */
+	let cancelAnimation: (() => void) | null = null;
+	/** Bumped on camera movement so the ring overlays re-project. */
+	let viewportVersion = $state(0);
 
 	onMount(() => {
 		let disposed = false;
@@ -60,13 +64,24 @@
 				defaultDrawNodeHover: makeHoverRenderer(theme)
 			});
 
+			renderer.getCamera().on('updated', () => {
+				viewportVersion += 1;
+			});
+
 			renderer.on('clickNode', ({ node }) => void builder.expand(node, 'back'));
+
+			// Handy for debugging camera and hit-testing from the console.
+			if (import.meta.env.DEV) {
+				(window as unknown as { __builderSigma?: unknown }).__builderSigma = renderer;
+			}
 
 			ready = true;
 		})();
 
 		return () => {
 			disposed = true;
+			cancelAnimation?.();
+			cancelAnimation = null;
 			renderer?.kill();
 			renderer = undefined;
 		};
@@ -80,6 +95,24 @@
 	 * on the previous positions, framing the camera on coordinates that no longer
 	 * exist.
 	 */
+	/**
+	 * Screen positions for the courses whose prerequisites are unmet, so each can
+	 * be ringed. Drawn as overlays for the same reason the selection ring is:
+	 * Sigma's default renderer has no outline.
+	 */
+	const unmetRings = $derived.by(() => {
+		void viewportVersion;
+		if (!ready || !renderer) return [];
+		const instance = renderer;
+		return [...builder.unmet]
+			.filter((code) => graph.hasNode(code))
+			.map((code) => {
+				const { x, y } = graph.getNodeAttributes(code);
+				const point = instance.graphToViewport({ x, y });
+				return { code, x: point.x, y: point.y };
+			});
+	});
+
 	function fit(): void {
 		if (!renderer || graph.order === 0) return;
 		const instance = renderer;
@@ -176,7 +209,33 @@
 		const targets: Record<string, { x: number; y: number }> = {};
 		for (const [code, point] of layout.positions) targets[code] = point;
 
-		animateNodes(graph, targets, { duration: 420 }, fit);
+		// Cancel any animation still running. Adding a course changes the drawn set
+		// and then the edges, so this effect fires twice in quick succession; two
+		// concurrent animations fight over the same nodes and the older one, headed
+		// for stale positions, wins the last write - leaving nodes stacked on their
+		// seed position.
+		// Cancel any animation still in flight. Adding a course changes the drawn
+		// set and then its edges, so this effect fires twice in quick succession,
+		// and two animations racing over the same nodes leave them wherever the
+		// slower one last wrote.
+		cancelAnimation?.();
+
+		// Animation runs on requestAnimationFrame, which is throttled to nothing in
+		// a hidden tab - so a layout computed while the tab is in the background
+		// would never actually be applied. Place the nodes outright in that case.
+		if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+			for (const [code, point] of Object.entries(targets)) {
+				graph.mergeNodeAttributes(code, point);
+			}
+			cancelAnimation = null;
+			fit();
+			return;
+		}
+
+		cancelAnimation = animateNodes(graph, targets, { duration: 420 }, () => {
+			cancelAnimation = null;
+			fit();
+		});
 	});
 
 	$effect(() => {
@@ -191,6 +250,20 @@
 
 <div class="relative h-full w-full">
 	<div bind:this={container} class="h-full w-full"></div>
+
+	{#each unmetRings as ring (ring.code)}
+		<span
+			class="pointer-events-none absolute rounded-full border-2"
+			style:left="{ring.x}px"
+			style:top="{ring.y}px"
+			style:width="24px"
+			style:height="24px"
+			style:transform="translate(-50%, -50%)"
+			style:border-color={INCOMPLETE[theme]}
+			style:opacity="0.8"
+			title="{ring.code} still has unmet prerequisites"
+		></span>
+	{/each}
 
 	{#if builder.codes.length <= 1}
 		<p
