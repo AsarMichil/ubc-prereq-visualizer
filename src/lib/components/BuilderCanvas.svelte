@@ -14,6 +14,7 @@
 	import Graph from 'graphology';
 	import type Sigma from 'sigma';
 	import { animateNodes } from 'sigma/utils';
+	import { createNodeBorderProgram } from '@sigma/node-border';
 	import { getBuilder, getExplorer } from '$lib/state/context';
 	import { EDGE_COLOR, hopColor, INCOMPLETE, INK, SURFACE } from '$lib/graph/palette';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
@@ -23,8 +24,23 @@
 	const explorer = getExplorer();
 	const theme = $derived(explorer.theme);
 
+	/**
+	 * A ring drawn as part of the node rather than as an overlay, so it scales
+	 * with zoom and stays exactly on the mark. An absolutely-positioned element
+	 * floated above the canvas at a fixed pixel size and drifted during movement.
+	 */
+	const BorderedNode = createNodeBorderProgram({
+		borders: [
+			{ color: { attribute: 'ringColor' }, size: { attribute: 'ringSize', defaultValue: 0 } },
+			{ color: { attribute: 'color' }, size: { fill: true } }
+		]
+	});
+
 	interface BuilderNode {
 		label: string;
+		/** Ring marking a course whose prerequisites are unmet. */
+		ringColor: string;
+		ringSize: number;
 		x: number;
 		y: number;
 		size: number;
@@ -38,8 +54,6 @@
 	let ready = $state(false);
 	/** Cancels the in-flight position animation; see the sync effect. */
 	let cancelAnimation: (() => void) | null = null;
-	/** Bumped on camera movement so the ring overlays re-project. */
-	let viewportVersion = $state(0);
 
 	onMount(() => {
 		let disposed = false;
@@ -50,6 +64,8 @@
 
 			renderer = new SigmaClass<BuilderNode>(graph, container, {
 				allowInvalidContainer: true,
+				defaultNodeType: 'bordered',
+				nodeProgramClasses: { bordered: BorderedNode },
 				defaultEdgeType: 'arrow',
 				renderEdgeLabels: false,
 				labelFont: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -62,10 +78,6 @@
 				labelDensity: 1,
 				zoomToSizeRatioFunction: (ratio: number) => Math.max(Math.sqrt(ratio), 0.55),
 				defaultDrawNodeHover: makeHoverRenderer(theme)
-			});
-
-			renderer.getCamera().on('updated', () => {
-				viewportVersion += 1;
 			});
 
 			renderer.on('clickNode', ({ node }) => void builder.expand(node, 'back'));
@@ -95,24 +107,6 @@
 	 * on the previous positions, framing the camera on coordinates that no longer
 	 * exist.
 	 */
-	/**
-	 * Screen positions for the courses whose prerequisites are unmet, so each can
-	 * be ringed. Drawn as overlays for the same reason the selection ring is:
-	 * Sigma's default renderer has no outline.
-	 */
-	const unmetRings = $derived.by(() => {
-		void viewportVersion;
-		if (!ready || !renderer) return [];
-		const instance = renderer;
-		return [...builder.unmet]
-			.filter((code) => graph.hasNode(code))
-			.map((code) => {
-				const { x, y } = graph.getNodeAttributes(code);
-				const point = instance.graphToViewport({ x, y });
-				return { code, x: point.x, y: point.y };
-			});
-	});
-
 	function fit(): void {
 		if (!renderer || graph.order === 0) return;
 		const instance = renderer;
@@ -180,6 +174,8 @@
 			const seed = anchorCode ? graph.getNodeAttributes(anchorCode) : { x: 0, y: 0 };
 			graph.addNode(node.code, {
 				label: node.code,
+				ringColor: 'rgba(0,0,0,0)',
+				ringSize: 0,
 				x: seed.x,
 				y: seed.y,
 				size: node.tier === 0 ? 16 : 12,
@@ -238,6 +234,20 @@
 		});
 	});
 
+	/** Ring the courses whose prerequisites the drawn set does not satisfy. */
+	$effect(() => {
+		const unmet = builder.unmet;
+		const currentTheme = theme;
+		if (!ready || !renderer) return;
+
+		renderer.setSetting('nodeReducer', (code, data) => ({
+			...data,
+			ringColor: unmet.has(code) ? INCOMPLETE[currentTheme] : 'rgba(0,0,0,0)',
+			ringSize: unmet.has(code) ? 0.28 : 0
+		}));
+		renderer.refresh({ skipIndexation: true });
+	});
+
 	$effect(() => {
 		const currentTheme = theme;
 		if (container) container.style.background = SURFACE[currentTheme];
@@ -250,20 +260,6 @@
 
 <div class="relative h-full w-full">
 	<div bind:this={container} class="h-full w-full"></div>
-
-	{#each unmetRings as ring (ring.code)}
-		<span
-			class="pointer-events-none absolute rounded-full border-2"
-			style:left="{ring.x}px"
-			style:top="{ring.y}px"
-			style:width="24px"
-			style:height="24px"
-			style:transform="translate(-50%, -50%)"
-			style:border-color={INCOMPLETE[theme]}
-			style:opacity="0.8"
-			title="{ring.code} still has unmet prerequisites"
-		></span>
-	{/each}
 
 	{#if builder.codes.length <= 1}
 		<p
