@@ -34,6 +34,15 @@ const YEAR_COLORS: Record<Theme, string[]> = {
 	dark: ['#184f95', '#2a78d6', '#5598e7', '#9ec5f4', '#cde2fb']
 };
 
+/**
+ * Marks a drawn course whose prerequisites are not yet satisfied.
+ *
+ * From the fixed status palette rather than the blue ramp, so it never reads as
+ * a year level. It is never the only signal: the course's panel lists exactly
+ * which rows are unmet.
+ */
+export const INCOMPLETE: Record<Theme, string> = { light: '#d03b3b', dark: '#d03b3b' };
+
 export const SURFACE: Record<Theme, string> = { light: '#fcfcfb', dark: '#1a1a19' };
 
 export const INK: Record<Theme, { primary: string; secondary: string; muted: string }> = {

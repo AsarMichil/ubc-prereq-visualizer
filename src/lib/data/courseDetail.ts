@@ -23,6 +23,8 @@ export interface CourseDetail {
 }
 
 const bundles = new Map<string, Promise<Record<string, CourseDetail>>>();
+/** Resolved bundles, so callers that cannot await can still read what is loaded. */
+const loaded = new Map<string, Record<string, CourseDetail>>();
 
 function subjectOf(code: CourseCode): string {
 	return code.split(/\s+/)[0];
@@ -33,7 +35,11 @@ export function loadSubject(subject: string): Promise<Record<string, CourseDetai
 	if (!bundle) {
 		bundle = fetch(`/data/courses/${subject}.json`)
 			.then((response) => (response.ok ? response.json() : {}))
-			.catch(() => ({}));
+			.catch(() => ({}))
+			.then((data: Record<string, CourseDetail>) => {
+				loaded.set(subject, data);
+				return data;
+			});
 		bundles.set(subject, bundle);
 	}
 	return bundle;
@@ -41,6 +47,18 @@ export function loadSubject(subject: string): Promise<Record<string, CourseDetai
 
 export async function getCourse(code: CourseCode): Promise<CourseDetail | null> {
 	const bundle = await loadSubject(subjectOf(code));
+	return bundle[code] ?? null;
+}
+
+/**
+ * Reads an already-loaded course without awaiting.
+ *
+ * Returns undefined when the subject has not finished loading, which callers
+ * must treat as "not known yet" rather than "has no prerequisites".
+ */
+export function peekCourse(code: CourseCode): CourseDetail | null | undefined {
+	const bundle = loaded.get(subjectOf(code));
+	if (!bundle) return undefined;
 	return bundle[code] ?? null;
 }
 

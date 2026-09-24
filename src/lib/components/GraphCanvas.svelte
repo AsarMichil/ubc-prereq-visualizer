@@ -9,6 +9,7 @@
 	 */
 	import { onMount } from 'svelte';
 	import { animateNodes } from 'sigma/utils';
+	import { createNodeBorderProgram } from '@sigma/node-border';
 	import { layeredLayout } from '$lib/graph/layered';
 	import type Sigma from 'sigma';
 	import type { CourseAttributes, EdgeAttributes } from '$lib/graph/loadGraph';
@@ -18,6 +19,18 @@
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
 
 	const explorer = getExplorer();
+
+	/**
+	 * The selection ring is drawn as part of the node rather than as an overlay.
+	 * A positioned element above the canvas sat at a fixed pixel size whatever the
+	 * zoom, and drifted off the mark while the camera moved.
+	 */
+	const BorderedNode = createNodeBorderProgram<CourseAttributes, EdgeAttributes>({
+		borders: [
+			{ color: { attribute: 'ringColor' }, size: { attribute: 'ringSize', defaultValue: 0 } },
+			{ color: { attribute: 'color' }, size: { fill: true } }
+		]
+	});
 
 	let container: HTMLDivElement;
 	let renderer: Sigma<CourseAttributes, EdgeAttributes> | undefined;
@@ -35,6 +48,8 @@
 
 			renderer = new SigmaClass(explorer.map.graph, container, {
 				allowInvalidContainer: true,
+				defaultNodeType: 'bordered',
+				nodeProgramClasses: { bordered: BorderedNode },
 				renderEdgeLabels: false,
 				enableEdgeEvents: true,
 				defaultNodeColor: '#888',
@@ -123,12 +138,21 @@
 			// Out of scope: recede almost into the surface. Selection reads as the
 			// rest of the map stepping back, not as the neighbourhood lighting up.
 			if (!shown || !inFocus) {
-				return { ...data, size: Math.max(size * 0.4, 1), color: dim, label: '', zIndex: -1 };
+				return {
+					...data,
+					size: Math.max(size * 0.4, 1),
+					color: dim,
+					label: '',
+					zIndex: -1,
+					ringColor: 'rgba(0,0,0,0)',
+					ringSize: 0
+				};
 			}
 
 			// In scope: neighbours keep their ordinary year colour and size. Only the
 			// selected course is marked, and only with a ring.
-			if (hasFocus && code === focus) {
+			const selected = hasFocus && code === focus;
+			if (selected) {
 				size = Math.max(size, 9);
 				zIndex = 3;
 			}
@@ -138,6 +162,8 @@
 				size,
 				color,
 				zIndex,
+				ringColor: selected ? INK[theme].primary : 'rgba(0,0,0,0)',
+				ringSize: selected ? 0.3 : 0,
 				// Far out, nothing gets a label — subject and faculty names are drawn
 				// as an overlay instead, so the canvas stays readable when zoomed out.
 				label: tier === 'far' && !hasFocus ? '' : data.label
@@ -345,24 +371,6 @@
 		return () => cancelAnimationFrame(frame);
 	});
 
-	/**
-	 * Where to draw the ring marking the selected course.
-	 *
-	 * A DOM overlay rather than a node border: Sigma's default renderer draws no
-	 * outline, and one absolutely-positioned element is lighter than pulling in a
-	 * custom node program for a single marker.
-	 */
-	const focusRing = $derived.by(() => {
-		void viewportVersion;
-		if (!ready || !renderer || !explorer.hasFocus || !explorer.focus) return null;
-		const graph = explorer.map?.graph;
-		if (!graph?.hasNode(explorer.focus)) return null;
-		// graphToViewport takes *graph* coordinates. Passing display data here
-		// double-converts, because those are already normalized.
-		const { x, y } = graph.getNodeAttributes(explorer.focus);
-		return renderer.graphToViewport({ x, y });
-	});
-
 	/** Projects baked map coordinates into viewport pixels for the label overlay. */
 	const project = $derived.by(() => {
 		void viewportVersion;
@@ -384,19 +392,6 @@
 	<div bind:this={container} class="h-full w-full"></div>
 
 	<RegionLabels {project} />
-
-	{#if focusRing}
-		<span
-			class="pointer-events-none absolute rounded-full border-2"
-			style:left="{focusRing.x}px"
-			style:top="{focusRing.y}px"
-			style:width="26px"
-			style:height="26px"
-			style:transform="translate(-50%, -50%)"
-			style:border-color={INK[explorer.theme].primary}
-			style:opacity="0.75"
-		></span>
-	{/if}
 
 	{#if !ready}
 		<div

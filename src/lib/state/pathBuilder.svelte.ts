@@ -23,8 +23,13 @@
  */
 import type Graph from 'graphology';
 import type { CourseAttributes, EdgeAttributes } from '../graph/loadGraph';
-import { getCourse, preloadSubjects, type CourseDetail } from '../data/courseDetail';
-import { requirementGroups, type RequirementGroup } from '../graph/requirementGroups';
+import { getCourse, peekCourse, preloadSubjects, type CourseDetail } from '../data/courseDetail';
+import {
+	displayGroups,
+	groupSatisfied,
+	requirementGroups,
+	type RequirementGroup
+} from '../graph/requirementGroups';
 
 export type Direction = 'back' | 'forward';
 
@@ -59,6 +64,8 @@ export class PathBuilderState {
 	detail = $state<CourseDetail | null>(null);
 
 	private graph: Graph<CourseAttributes, EdgeAttributes> | null = null;
+	/** Bumped when course detail finishes loading, so `unmet` recomputes. */
+	private detailsVersion = $state(0);
 
 	attach(graph: Graph<CourseAttributes, EdgeAttributes>): void {
 		this.graph = graph;
@@ -113,6 +120,41 @@ export class PathBuilderState {
 		return this.codes.map((code) => ({ code, tier: depth.get(code) ?? 0 }));
 	});
 
+	/**
+	 * Drawn courses whose prerequisites are not satisfied by what is drawn.
+	 *
+	 * Recomputed from the drawn set, so it follows every rebalance. A course whose
+	 * detail has not loaded yet is left unflagged rather than assumed incomplete.
+	 * Rows that nothing can satisfy - the handful whose only options are Okanagan
+	 * courses - are skipped, since flagging them would be permanent and
+	 * actionless.
+	 */
+	unmet = $derived.by(() => {
+		void this.detailsVersion;
+		const drawn = new Set(this.codes);
+		const flagged = new Set<string>();
+
+		for (const code of this.codes) {
+			const detail = peekCourse(code);
+			if (!detail?.prerequisite) continue;
+
+			const rows = displayGroups(requirementGroups(detail.prerequisite), drawn);
+			const unsatisfied = rows.some(
+				(row) => row.satisfiedBy.length === 0 && !row.unavailable && !groupSatisfied(row, drawn)
+			);
+			if (unsatisfied) flagged.add(code);
+		}
+
+		return flagged;
+	});
+
+	/** Loads detail for every drawn course so `unmet` can be evaluated. */
+	private async loadDetails(): Promise<void> {
+		const wanted = [...this.codes];
+		await preloadSubjects(wanted);
+		this.detailsVersion += 1;
+	}
+
 	tierOf(code: string): number {
 		return this.tiers.find((entry) => entry.code === code)?.tier ?? 0;
 	}
@@ -158,6 +200,7 @@ export class PathBuilderState {
 		if (connections.length === 0 && !this.roots.includes(code)) {
 			this.roots = [...this.roots, code];
 		}
+		this.rebalance();
 		void this.expand(code, 'back');
 	}
 
@@ -256,6 +299,7 @@ export class PathBuilderState {
 			if (!this.hasEdge(edge)) this.edges = [...this.edges, edge];
 		}
 
+		this.rebalance();
 		this.expanding = null;
 	}
 
@@ -267,34 +311,116 @@ export class PathBuilderState {
 	 * longer connected to any remaining root goes too - which collapses to the
 	 * old behaviour for a single tree.
 	 */
-	remove(code: string): void {
-		const codes = this.codes.filter((existing) => existing !== code);
-		const edges = this.edges.filter((edge) => edge.from !== code && edge.to !== code);
-		const roots = this.roots.filter((root) => root !== code);
+	/**
+	 * Re-establishes the drawn set's invariants after any change.
+	 *
+	 * Every mutation funnels through here so the same rules hold no matter how
+	 * the set was reached:
+	 *
+	 *   1. Any two drawn courses with a direct relationship have an edge, in the
+	 *      right direction. This is what dedupes a shared prerequisite.
+	 *   2. Every connected component has a root, so depth can be measured from
+	 *      somewhere. A component that loses its root is given a new one rather
+	 *      than being deleted.
+	 *   3. Roots that are no longer drawn are dropped.
+	 *
+	 * Nothing is discarded here. Removing a course used to delete everything that
+	 * hung off it, which meant removing the course you started from wiped the
+	 * whole tree; now the remainder survives and re-roots itself.
+	 */
+	rebalance(): void {
+		const drawn = new Set(this.codes);
+		const graph = this.graph;
 
-		const neighbours = new Map<string, string[]>();
-		const link = (a: string, b: string) =>
-			(neighbours.get(a) ?? neighbours.set(a, []).get(a)!).push(b);
-		for (const edge of edges) {
-			link(edge.from, edge.to);
-			link(edge.to, edge.from);
-		}
+		// 1. Edges: keep explicit ones between drawn courses, and re-derive any
+		//    relationship the wider graph knows about.
+		const edges = this.edges.filter((edge) => drawn.has(edge.from) && drawn.has(edge.to));
+		const seen = new Set(edges.map((edge) => `${edge.from}>${edge.to}`));
 
-		const reachable = new Set<string>();
-		const queue = roots.filter((root) => codes.includes(root));
-		queue.forEach((root) => reachable.add(root));
-		for (let index = 0; index < queue.length; index++) {
-			for (const next of neighbours.get(queue[index]) ?? []) {
-				if (reachable.has(next)) continue;
-				reachable.add(next);
-				queue.push(next);
+		if (graph) {
+			for (const code of this.codes) {
+				if (!graph.hasNode(code)) continue;
+				for (const other of this.codes) {
+					if (other === code || !graph.hasNode(other)) continue;
+					if (graph.hasDirectedEdge(other, code) && !seen.has(`${other}>${code}`)) {
+						edges.push({ from: other, to: code });
+						seen.add(`${other}>${code}`);
+					}
+				}
 			}
 		}
 
-		this.codes = codes.filter((existing) => reachable.has(existing));
-		this.roots = roots.filter((root) => reachable.has(root));
-		this.edges = edges.filter((edge) => reachable.has(edge.from) && reachable.has(edge.to));
-		if (this.expanding && !this.has(this.expanding.code)) this.expanding = null;
+		// 2. Components over the undirected view.
+		const neighbours = new Map<string, string[]>();
+		const outgoing = new Map<string, number>();
+		const incoming = new Map<string, number>();
+		for (const edge of edges) {
+			(neighbours.get(edge.from) ?? neighbours.set(edge.from, []).get(edge.from)!).push(edge.to);
+			(neighbours.get(edge.to) ?? neighbours.set(edge.to, []).get(edge.to)!).push(edge.from);
+			outgoing.set(edge.from, (outgoing.get(edge.from) ?? 0) + 1);
+			incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
+		}
+
+		const componentOf = new Map<string, number>();
+		const components: string[][] = [];
+		for (const code of this.codes) {
+			if (componentOf.has(code)) continue;
+			const members: string[] = [];
+			const queue = [code];
+			componentOf.set(code, components.length);
+			for (let index = 0; index < queue.length; index++) {
+				members.push(queue[index]);
+				for (const next of neighbours.get(queue[index]) ?? []) {
+					if (componentOf.has(next)) continue;
+					componentOf.set(next, components.length);
+					queue.push(next);
+				}
+			}
+			components.push(members);
+		}
+
+		// 3. One root per component. An existing root keeps the job; otherwise the
+		//    most goal-like member is promoted - nothing drawn depends on it, and
+		//    it has the most prerequisites drawn beneath it.
+		const existing = new Set(this.roots.filter((root) => drawn.has(root)));
+		const roots: string[] = [];
+
+		for (const members of components) {
+			const kept = members.filter((code) => existing.has(code));
+			if (kept.length) {
+				roots.push(...kept);
+				continue;
+			}
+
+			const terminal = members.filter((code) => (outgoing.get(code) ?? 0) === 0);
+			const candidates = terminal.length ? terminal : members;
+			const promoted = candidates.reduce((best, code) => {
+				const score = incoming.get(code) ?? 0;
+				const bestScore = incoming.get(best) ?? 0;
+				if (score !== bestScore) return score > bestScore ? code : best;
+				return code < best ? code : best;
+			}, candidates[0]);
+			roots.push(promoted);
+		}
+
+		this.edges = edges;
+		this.roots = roots;
+		if (this.expanding && !drawn.has(this.expanding.code)) this.expanding = null;
+
+		// Requirements are judged against the drawn set, so they change whenever it
+		// does; make sure the detail needed to judge them is present.
+		void this.loadDetails();
+	}
+
+	/**
+	 * Removes a course. Whatever it connected stays drawn and re-roots itself, so
+	 * removing the course you started from trims one node rather than the tree.
+	 */
+	remove(code: string): void {
+		this.codes = this.codes.filter((existing) => existing !== code);
+		this.edges = this.edges.filter((edge) => edge.from !== code && edge.to !== code);
+		this.roots = this.roots.filter((root) => root !== code);
+		this.rebalance();
 	}
 
 	/** Courses drawn so far, excluding roots: the plan you have built. */
