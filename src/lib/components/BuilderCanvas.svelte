@@ -14,8 +14,9 @@
 	import Graph from 'graphology';
 	import type Sigma from 'sigma';
 	import { animateNodes } from 'sigma/utils';
+	import { createNodeBorderProgram } from '@sigma/node-border';
 	import { getBuilder, getExplorer } from '$lib/state/context';
-	import { EDGE_COLOR, hopColor, INK, SURFACE } from '$lib/graph/palette';
+	import { EDGE_COLOR, hopColor, INCOMPLETE, INK, SURFACE } from '$lib/graph/palette';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
 	import { tieredLayout } from '$lib/graph/layered';
 
@@ -23,8 +24,23 @@
 	const explorer = getExplorer();
 	const theme = $derived(explorer.theme);
 
+	/**
+	 * A ring drawn as part of the node rather than as an overlay, so it scales
+	 * with zoom and stays exactly on the mark. An absolutely-positioned element
+	 * floated above the canvas at a fixed pixel size and drifted during movement.
+	 */
+	const BorderedNode = createNodeBorderProgram({
+		borders: [
+			{ color: { attribute: 'ringColor' }, size: { attribute: 'ringSize', defaultValue: 0 } },
+			{ color: { attribute: 'color' }, size: { fill: true } }
+		]
+	});
+
 	interface BuilderNode {
 		label: string;
+		/** Ring marking a course whose prerequisites are unmet. */
+		ringColor: string;
+		ringSize: number;
 		x: number;
 		y: number;
 		size: number;
@@ -36,6 +52,8 @@
 	let renderer: Sigma<BuilderNode> | undefined;
 	let graph = new Graph<BuilderNode>({ type: 'directed' });
 	let ready = $state(false);
+	/** Cancels the in-flight position animation; see the sync effect. */
+	let cancelAnimation: (() => void) | null = null;
 
 	onMount(() => {
 		let disposed = false;
@@ -46,6 +64,8 @@
 
 			renderer = new SigmaClass<BuilderNode>(graph, container, {
 				allowInvalidContainer: true,
+				defaultNodeType: 'bordered',
+				nodeProgramClasses: { bordered: BorderedNode },
 				defaultEdgeType: 'arrow',
 				renderEdgeLabels: false,
 				labelFont: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -62,11 +82,18 @@
 
 			renderer.on('clickNode', ({ node }) => void builder.expand(node, 'back'));
 
+			// Handy for debugging camera and hit-testing from the console.
+			if (import.meta.env.DEV) {
+				(window as unknown as { __builderSigma?: unknown }).__builderSigma = renderer;
+			}
+
 			ready = true;
 		})();
 
 		return () => {
 			disposed = true;
+			cancelAnimation?.();
+			cancelAnimation = null;
 			renderer?.kill();
 			renderer = undefined;
 		};
@@ -147,6 +174,8 @@
 			const seed = anchorCode ? graph.getNodeAttributes(anchorCode) : { x: 0, y: 0 };
 			graph.addNode(node.code, {
 				label: node.code,
+				ringColor: 'rgba(0,0,0,0)',
+				ringSize: 0,
 				x: seed.x,
 				y: seed.y,
 				size: node.tier === 0 ? 16 : 12,
@@ -176,7 +205,47 @@
 		const targets: Record<string, { x: number; y: number }> = {};
 		for (const [code, point] of layout.positions) targets[code] = point;
 
-		animateNodes(graph, targets, { duration: 420 }, fit);
+		// Cancel any animation still running. Adding a course changes the drawn set
+		// and then the edges, so this effect fires twice in quick succession; two
+		// concurrent animations fight over the same nodes and the older one, headed
+		// for stale positions, wins the last write - leaving nodes stacked on their
+		// seed position.
+		// Cancel any animation still in flight. Adding a course changes the drawn
+		// set and then its edges, so this effect fires twice in quick succession,
+		// and two animations racing over the same nodes leave them wherever the
+		// slower one last wrote.
+		cancelAnimation?.();
+
+		// Animation runs on requestAnimationFrame, which is throttled to nothing in
+		// a hidden tab - so a layout computed while the tab is in the background
+		// would never actually be applied. Place the nodes outright in that case.
+		if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+			for (const [code, point] of Object.entries(targets)) {
+				graph.mergeNodeAttributes(code, point);
+			}
+			cancelAnimation = null;
+			fit();
+			return;
+		}
+
+		cancelAnimation = animateNodes(graph, targets, { duration: 420 }, () => {
+			cancelAnimation = null;
+			fit();
+		});
+	});
+
+	/** Ring the courses whose prerequisites the drawn set does not satisfy. */
+	$effect(() => {
+		const unmet = builder.unmet;
+		const currentTheme = theme;
+		if (!ready || !renderer) return;
+
+		renderer.setSetting('nodeReducer', (code, data) => ({
+			...data,
+			ringColor: unmet.has(code) ? INCOMPLETE[currentTheme] : 'rgba(0,0,0,0)',
+			ringSize: unmet.has(code) ? 0.28 : 0
+		}));
+		renderer.refresh({ skipIndexation: true });
 	});
 
 	$effect(() => {

@@ -147,86 +147,66 @@ describe('PathBuilderState', () => {
 		);
 	});
 
-	it('removes a course and anything it stranded, leaving other trees alone', () => {
-		const builder = builderWith();
-		builder.addRoot('CPSC 221');
-		builder.add('CPSC 221', ['CPSC 210'], 'back');
-		builder.add('CPSC 210', ['CPSC 110'], 'back');
-		builder.addRoot('FREN 302');
-
-		builder.remove('CPSC 210');
-
-		// CPSC 110 hung off CPSC 210 only, so it goes too.
-		expect(builder.codes).not.toContain('CPSC 210');
-		expect(builder.codes).not.toContain('CPSC 110');
-		expect(builder.codes).toContain('CPSC 221');
-		// The unrelated tree is untouched.
-		expect(builder.codes).toContain('FREN 302');
-	});
-
 	/**
-	 * The original bug: the page reacted to the focused course inside an $effect
-	 * that also read the drawn set, so removing the focused course re-ran it and
-	 * added the course back. Selection is now driven from the event that caused
-	 * it, so that feedback loop cannot form - these cover the semantics that
-	 * replaced it.
+	 * Removal used to delete everything hanging off the removed course, so
+	 * removing the course you started from wiped the whole tree. It now trims one
+	 * node and lets whatever survives re-root itself.
 	 */
-	describe('select', () => {
-		it('adds a course that is not drawn yet', () => {
-			const builder = builderWith();
-			builder.select('CPSC 221');
-			expect(builder.codes).toEqual(['CPSC 221']);
-			expect(builder.roots).toEqual(['CPSC 221']);
-		});
-
-		it('does not duplicate a course that is already drawn', () => {
-			const builder = builderWith();
-			builder.select('CPSC 221');
-			builder.select('CPSC 221');
-			expect(builder.codes).toEqual(['CPSC 221']);
-			expect(builder.roots).toEqual(['CPSC 221']);
-		});
-
-		// The invariant that matters: nothing puts a removed course back on its own.
-		it('leaves a removed course removed until it is selected again', () => {
-			const builder = builderWith();
-			builder.select('CPSC 221');
-			builder.remove('CPSC 221');
-			expect(builder.isEmpty).toBe(true);
-
-			// Only an explicit selection brings it back.
-			builder.select('CPSC 221');
-			expect(builder.codes).toContain('CPSC 221');
-		});
-
-		it('removes a course that is not the selected one without disturbing the rest', () => {
+	describe('rebalance on removal', () => {
+		it('keeps the rest drawn when a middle course is removed', () => {
 			const builder = builderWith();
 			builder.select('CPSC 221');
 			builder.add('CPSC 221', ['CPSC 210'], 'back');
+			builder.add('CPSC 210', ['CPSC 110'], 'back');
+			builder.select('FREN 302');
 
 			builder.remove('CPSC 210');
-			expect(builder.codes).toEqual(['CPSC 221']);
+
+			// Nothing is discarded; the chain simply splits in two.
+			expect(builder.codes).not.toContain('CPSC 210');
+			expect(builder.codes).toEqual(expect.arrayContaining(['CPSC 221', 'CPSC 110', 'FREN 302']));
+			// CPSC 110 lost its only link, so it becomes a root of its own.
+			expect(builder.roots).toEqual(expect.arrayContaining(['CPSC 221', 'CPSC 110', 'FREN 302']));
 		});
 
-		it('can select the same course again after clear()', () => {
+		it('re-roots a component when its root is removed', () => {
 			const builder = builderWith();
 			builder.select('CPSC 221');
-			builder.clear();
-			builder.select('CPSC 221');
-			expect(builder.codes).toContain('CPSC 221');
+			builder.add('CPSC 221', ['CPSC 210'], 'back');
+			builder.add('CPSC 210', ['CPSC 110'], 'back');
+
+			builder.remove('CPSC 221');
+
+			expect(builder.codes).toEqual(expect.arrayContaining(['CPSC 210', 'CPSC 110']));
+			// The most goal-like survivor is promoted: nothing drawn depends on it.
+			expect(builder.roots).toEqual(['CPSC 210']);
+			expect(builder.tierOf('CPSC 210')).toBe(0);
+			expect(builder.tierOf('CPSC 110')).toBe(-1);
 		});
-	});
 
-	it('drops a whole component when its root is removed', () => {
-		const builder = builderWith();
-		builder.addRoot('CPSC 221');
-		builder.add('CPSC 221', ['CPSC 210'], 'back');
-		builder.addRoot('FREN 302');
+		it('leaves other components untouched', () => {
+			const builder = builderWith();
+			builder.select('CPSC 221');
+			builder.select('FREN 302');
+			builder.add('FREN 302', ['FREN 202'], 'back');
 
-		builder.remove('CPSC 221');
+			builder.remove('CPSC 221');
 
-		expect(builder.codes).toEqual(['FREN 302']);
-		expect(builder.roots).toEqual(['FREN 302']);
-		expect(builder.edges).toEqual([]);
+			expect(builder.codes).toEqual(expect.arrayContaining(['FREN 302', 'FREN 202']));
+			expect(builder.roots).toEqual(['FREN 302']);
+		});
+
+		it('gives every component exactly one root', () => {
+			const builder = builderWith();
+			builder.select('CPSC 221');
+			builder.add('CPSC 221', ['CPSC 210', 'MATH 100'], 'back');
+			builder.select('FREN 302');
+
+			builder.remove('CPSC 221');
+			builder.rebalance();
+
+			// CPSC 210, MATH 100 and FREN 302 are now three separate components.
+			expect(builder.roots.sort()).toEqual(['CPSC 210', 'FREN 302', 'MATH 100']);
+		});
 	});
 });
