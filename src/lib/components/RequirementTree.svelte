@@ -32,6 +32,22 @@
 			<span class="font-medium">{LABELS[node.conditionType] ?? 'Also'}:</span>
 			{node.raw}
 		</span>
+	{:else if node.kind === 'credits'}
+		<span class="text-xs text-[var(--ink-secondary)]">
+			<span class="font-medium">{node.count} credits</span>
+			from {node.subjects.join(' or ')}{node.minLevel ? ` at ${node.minLevel}+` : ''}
+		</span>
+	{:else if node.kind === 'creditExclusion'}
+		<!-- The list's members live on a page the scrape can't follow, so the named
+		     course is offered as the one reference we can resolve. -->
+		<button
+			type="button"
+			class="rounded px-1.5 py-0.5 font-mono text-xs underline decoration-dotted underline-offset-2 hover:bg-[var(--chip)]"
+			onclick={() => onSelect?.(node.code)}>{node.code}</button
+		>
+		<span class="text-xs text-[var(--ink-secondary)]"
+			>or any course on its credit exclusion list</span
+		>
 	{:else if node.kind === 'unparsed'}
 		<span class="text-xs text-[var(--ink-secondary)] italic">{node.raw}</span>
 	{:else if node.kind === 'withGrade'}

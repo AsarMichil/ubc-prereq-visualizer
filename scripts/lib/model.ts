@@ -122,7 +122,11 @@ export function* iterateRefs(
 	if (!node) return;
 
 	switch (node.kind) {
+		// A course is always on its own credit exclusion list, so the named course
+		// is a genuine way to satisfy the requirement - it just is not the only
+		// one, and it is never mandatory on its own.
 		case 'course':
+		case 'creditExclusion':
 			yield { code: node.code, groupId: group };
 			break;
 		case 'unparsed':

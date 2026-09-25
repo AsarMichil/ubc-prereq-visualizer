@@ -70,7 +70,9 @@
 	const unmetGroups = $derived(
 		rowsToShow.filter(
 			(group) =>
-				group.satisfiedBy.length === 0 && !group.unavailable && !groupSatisfied(group, pickedSet)
+				group.satisfiedBy.length === 0 &&
+				!group.unavailable &&
+				!groupSatisfied(group, pickedSet, builder.creditsOf)
 		)
 	);
 </script>
@@ -143,6 +145,7 @@
 							{drawn}
 							picked={pickedSet}
 							{theme}
+							creditsOf={builder.creditsOf}
 							onToggle={toggle}
 						/>
 					</div>

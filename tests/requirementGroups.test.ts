@@ -154,16 +154,18 @@ describe('displayGroups', () => {
 describe('displayGroups · preserving prose', () => {
 	// CPSC 320's requirement bundles a real credits rule with Okanagan-only
 	// courses. Removing the unusable codes must not remove the rule.
-	it('keeps the wording when an all-Okanagan option still states a requirement', () => {
+	it('keeps a credit quota when the only other option is Okanagan-only', () => {
 		const clause =
 			'at least 3 credits from MATH_V or STAT_V at 200 level or above or MATH_O 200, MATH_O 220';
 		const [row] = displayGroups(groupsFor(clause), new Set());
 
+		// The Okanagan branch is hidden, but the row is still satisfiable here, so
+		// it must not be marked unavailable - and the quota has to survive as a
+		// structured option rather than collapsing back into prose.
 		expect(row.unavailable).toBe(false);
 		expect(row.visible).toHaveLength(1);
-		expect(row.visible[0].kind).toBe('condition');
-		expect(row.visible[0].label).toContain('at least 3 credits');
-		expect(row.visible[0].label).not.toContain('MATH_O');
+		expect(row.visible[0].kind).toBe('credits');
+		expect(row.visible[0].label).toBe('3 credits from MATH or STAT at 200+');
 	});
 
 	it('still reports a row as unavailable when only bare codes remain', () => {

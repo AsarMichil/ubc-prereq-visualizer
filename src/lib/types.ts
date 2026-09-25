@@ -16,6 +16,31 @@ export type RequirementNode =
 	| { kind: 'all'; children: RequirementNode[] }
 	| { kind: 'oneOf'; groupId: string; children: RequirementNode[] }
 	| { kind: 'nOf'; n: number; groupId: string; children: RequirementNode[] }
+	/**
+	 * "at least 3 credits from MATH or STAT at 200 level or above" - a quantity
+	 * drawn from a set defined by subject and level, not a list of courses.
+	 *
+	 * Distinct from `condition` because it is checkable: given what a student has,
+	 * you can add up the matching credits. 23 clauses state requirements this way.
+	 */
+	| {
+			kind: 'credits';
+			count: number;
+			/** Subjects the credits may come from, campus suffix stripped. */
+			subjects: string[];
+			/** Lowest course number that counts, e.g. 200. Null when unstated. */
+			minLevel: number | null;
+			raw: string;
+	  }
+	/**
+	 * "any course on the STAT 200 credit exclusion list" - satisfied by the named
+	 * course or by anything UBC deems equivalent to it.
+	 *
+	 * The list itself lives on a page the calendar links to and the scrape cannot
+	 * follow, so the members are unknown. The named course is kept as a real
+	 * reference because a course is always on its own exclusion list.
+	 */
+	| { kind: 'creditExclusion'; code: CourseCode; raw: string }
 	/** "a score of 68% or higher in MATH 321" — a threshold bound to a specific course. */
 	| {
 			kind: 'withGrade';

@@ -8,8 +8,8 @@
 	 * inside it, when what you actually need is AI 240 plus exactly one of the six.
 	 * Recursing keeps every course an individually selectable leaf.
 	 */
-	import type { RequirementGroup } from '$lib/graph/requirementGroups';
-	import { displayGroups, groupSatisfied } from '$lib/graph/requirementGroups';
+	import type { CreditsOf, RequirementGroup } from '$lib/graph/requirementGroups';
+	import { creditsToward, displayGroups, groupSatisfied } from '$lib/graph/requirementGroups';
 	import { hopColor, INK, type Theme } from '$lib/graph/palette';
 	import RequirementRows from './RequirementRows.svelte';
 
@@ -18,6 +18,7 @@
 		drawn,
 		picked,
 		theme,
+		creditsOf,
 		onToggle,
 		depth = 0
 	}: {
@@ -25,11 +26,20 @@
 		drawn: ReadonlySet<string>;
 		picked: ReadonlySet<string>;
 		theme: Theme;
+		/** Credits per course, so a quota row can be checked rather than just shown. */
+		creditsOf: CreditsOf;
 		onToggle: (code: string) => void;
 		depth?: number;
 	} = $props();
 
 	const rows = $derived(displayGroups(groups, drawn));
+
+	/**
+	 * Courses already drawn count toward a quota exactly as newly ticked ones do -
+	 * MATH 200 sitting in the tree satisfies "3 credits of MATH at 200 level or
+	 * above" whether or not it was picked in this panel.
+	 */
+	const selected = $derived(new Set([...picked, ...drawn]));
 
 	function heading(group: RequirementGroup): string {
 		return group.kind === 'required' ? 'Required' : `Choose ${group.n}`;
@@ -39,7 +49,7 @@
 <div class="flex flex-col gap-3" class:gap-4={depth === 0}>
 	{#each rows as group (group.id)}
 		{@const already = group.satisfiedBy.length > 0}
-		{@const met = already || groupSatisfied(group, picked as Set<string>)}
+		{@const met = already || groupSatisfied(group, selected, creditsOf)}
 		<div>
 			<p class="mb-1.5 text-[11px] font-semibold tracking-wide uppercase">
 				<span style:color={met ? hopColor(1, theme) : INK[theme].secondary}>
@@ -69,6 +79,20 @@
 							{option.label}
 							<span class="text-[var(--ink-muted)]">· high school</span>
 						</p>
+					{:else if option.kind === 'credits'}
+						{@const progress = creditsToward(option, selected, creditsOf)}
+						<p class="px-2 py-1 text-xs text-[var(--ink-secondary)]">
+							<span class="font-medium">{option.count} credits</span>
+							from {option.subjects.join(' or ')}{option.minLevel ? ` at ${option.minLevel}+` : ''}
+							<!-- Naming the courses that count is what makes the quota feel
+							     selectable: there is no box to tick, so the only feedback is
+							     seeing a course you added land against it. -->
+							{#if progress.total > 0}
+								<span style:color={progress.total >= option.count ? hopColor(1, theme) : undefined}>
+									· {progress.total}/{option.count} from {progress.courses.join(', ')}
+								</span>
+							{/if}
+						</p>
 					{:else if option.kind === 'course'}
 						<label
 							class="flex cursor-pointer items-start gap-2 rounded px-2 py-1 text-xs hover:bg-[var(--chip)]"
@@ -86,7 +110,7 @@
 						<!-- A nested alternative: indent it and render its own rows. -->
 						<div
 							class="ml-1 border-l-2 pl-2.5"
-							style:border-color={groupSatisfied(option.group, picked as Set<string>)
+							style:border-color={groupSatisfied(option.group, selected, creditsOf)
 								? hopColor(1, theme)
 								: 'var(--line)'}
 						>
@@ -95,6 +119,7 @@
 								{drawn}
 								{picked}
 								{theme}
+								{creditsOf}
 								{onToggle}
 								depth={depth + 1}
 							/>

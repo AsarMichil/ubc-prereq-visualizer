@@ -10,8 +10,25 @@
  */
 import type { CourseCode, RequirementNode } from '../types';
 
+/** Reads back as the requirement, e.g. "3 credits from MATH or STAT at 200+". */
+export function describeCredits(
+	count: number,
+	subjects: string[],
+	minLevel: number | null
+): string {
+	return `${count} credits from ${subjects.join(' or ')}${minLevel ? ` at ${minLevel}+` : ''}`;
+}
+
 export type OptionNode =
 	| { kind: 'course'; code: CourseCode; label: string; otherCampus: boolean }
+	/** A quantity of credits from a subject, rather than named courses. */
+	| {
+			kind: 'credits';
+			label: string;
+			count: number;
+			subjects: string[];
+			minLevel: number | null;
+	  }
 	/** A BC secondary-school course; it can never be expanded further. */
 	| { kind: 'highSchool'; label: string }
 	/** A non-course requirement (standing, permission); shown but not selectable. */
@@ -32,10 +49,16 @@ function labelOf(node: RequirementNode): string {
 	switch (node.kind) {
 		case 'course':
 			return node.code;
+		// The list's members are unknown, so name the course and say plainly that
+		// an equivalent counts - which is what a credit exclusion list is.
+		case 'creditExclusion':
+			return `${node.code} or equivalent`;
 		case 'highSchoolCourse':
 			return node.name;
 		case 'condition':
 			return node.raw;
+		case 'credits':
+			return describeCredits(node.count, node.subjects, node.minLevel);
 		case 'unparsed':
 			return node.raw;
 		case 'withGrade':
@@ -55,6 +78,7 @@ function coursesIn(node: RequirementNode): CourseCode[] {
 	const walk = (current: RequirementNode): void => {
 		switch (current.kind) {
 			case 'course':
+			case 'creditExclusion':
 				found.push(current.code);
 				break;
 			case 'unparsed':
@@ -84,22 +108,43 @@ function toOption(node: RequirementNode, idPrefix: string, index: number): Optio
 	const inner = unwrap(node);
 
 	switch (inner.kind) {
+		// A credit exclusion reference is selectable like any other course: taking
+		// the named course does satisfy it, and routing it through the same option
+		// kind keeps it deduped against the rest of the graph.
+		//
+		// "_O" survives normalization precisely so Okanagan courses stay distinct
+		// from their Vancouver namesakes; surface that here.
 		case 'course':
-			// "_O" survives normalization precisely so Okanagan courses stay
-			// distinct from their Vancouver namesakes; surface that here.
+		case 'creditExclusion':
 			return { kind: 'course', code: inner.code, label, otherCampus: /_O\s/.test(inner.code) };
 		case 'highSchoolCourse':
 			return { kind: 'highSchool', label };
 		case 'condition':
 		case 'unparsed':
 			return { kind: 'condition', label };
-		default:
+		case 'credits':
+			return {
+				kind: 'credits',
+				label,
+				count: inner.count,
+				subjects: inner.subjects,
+				minLevel: inner.minLevel
+			};
+		// Only the compound kinds recurse. Listing them explicitly rather than
+		// falling through means a future node kind becomes a plain condition
+		// instead of bouncing between toOption and toGroup forever - which is
+		// exactly what `credits` did before it had a case here.
+		case 'all':
+		case 'oneOf':
+		case 'nOf':
 			return {
 				kind: 'compound',
 				label,
 				courses: coursesIn(inner),
 				group: toGroup(inner, `${idPrefix}.${index}`)
 			};
+		default:
+			return { kind: 'condition', label };
 	}
 }
 
@@ -161,21 +206,80 @@ export function alwaysRequired(groups: RequirementGroup[]): CourseCode[] {
 	return [...new Set(found)];
 }
 
-/** True once a group's selection satisfies it. */
-export function groupSatisfied(group: RequirementGroup, selected: Set<string>): boolean {
+/**
+ * How many credits a course is worth - the "(3)" beside its calendar title.
+ * Returns 0 for a course the graph doesn't know, which simply contributes
+ * nothing toward a quota.
+ */
+export type CreditsOf = (code: CourseCode) => number;
+
+/** A selected course's subject, keeping the campus suffix. */
+const subjectOf = (code: CourseCode): string => code.slice(0, code.lastIndexOf(' '));
+const numberOf = (code: CourseCode): number =>
+	Number.parseInt(code.slice(code.lastIndexOf(' ') + 1), 10);
+
+/**
+ * Courses in `selected` that count toward a credit quota, and the credits they
+ * add up to.
+ *
+ * Subjects are compared with the campus suffix intact. "3 credits from MATH_V
+ * or STAT_V" normalizes to MATH/STAT, and a Vancouver code carries no suffix,
+ * so MATH 200 matches while MATH_O 200 does not - which is right: the Okanagan
+ * equivalents are spelled out as their own alternatives alongside the quota.
+ */
+export function creditsToward(
+	option: Extract<OptionNode, { kind: 'credits' }>,
+	selected: Iterable<string>,
+	creditsOf: CreditsOf
+): { courses: CourseCode[]; total: number } {
+	const courses: CourseCode[] = [];
+	let total = 0;
+
+	for (const code of selected) {
+		if (!option.subjects.includes(subjectOf(code))) continue;
+		const number = numberOf(code);
+		if (option.minLevel !== null && !(number >= option.minLevel)) continue;
+		const credits = creditsOf(code);
+		if (credits <= 0) continue;
+		courses.push(code);
+		total += credits;
+	}
+
+	return { courses, total };
+}
+
+/**
+ * True once a group's selection satisfies it.
+ *
+ * `creditsOf` is what makes a credit quota checkable: without it a "3 credits
+ * from MATH or STAT at 200 level or above" row can only ever be satisfied by
+ * the specific courses listed beside it, and picking MATH 200 - which plainly
+ * does satisfy it - would leave the row flagged. Callers that only render
+ * structure can omit it, and quotas are then ignored as before.
+ */
+export function groupSatisfied(
+	group: RequirementGroup,
+	selected: Set<string>,
+	creditsOf?: CreditsOf
+): boolean {
 	const selectable = group.options.filter(
-		(option) => option.kind === 'course' || option.kind === 'compound'
+		(option) =>
+			option.kind === 'course' ||
+			option.kind === 'compound' ||
+			(option.kind === 'credits' && creditsOf !== undefined)
 	);
 	if (selectable.length === 0) return true; // conditions only; nothing to pick
 
-	const chosen = selectable.filter((option) =>
-		option.kind === 'course'
-			? selected.has(option.code)
-			: // A compound counts only when its own structure is satisfied. Treating
-				// "any course inside it" as enough would mark "AI 240 and one of six"
-				// complete after a single tick on one of the six.
-				groupSatisfied(option.group, selected)
-	).length;
+	const chosen = selectable.filter((option) => {
+		if (option.kind === 'course') return selected.has(option.code);
+		if (option.kind === 'credits') {
+			return creditsToward(option, selected, creditsOf!).total >= option.count;
+		}
+		// A compound counts only when its own structure is satisfied. Treating
+		// "any course inside it" as enough would mark "AI 240 and one of six"
+		// complete after a single tick on one of the six.
+		return option.kind === 'compound' ? groupSatisfied(option.group, selected, creditsOf) : false;
+	}).length;
 
 	return group.kind === 'required' ? chosen === selectable.length : chosen >= group.n;
 }
@@ -218,6 +322,19 @@ function stripCodes(label: string): string {
 		.split(/\s+/)
 		.filter(Boolean);
 	return words.length >= 3 ? cleaned.replace(/[:;,]+$/, '') : '';
+}
+
+/**
+ * True when a group holds something meaningful that is not an unusable course -
+ * a credit requirement, or a course that can actually be taken here.
+ */
+function hasContentBeyondCourses(group: RequirementGroup): boolean {
+	return group.options.some((option) => {
+		if (option.kind === 'credits') return true;
+		if (option.kind === 'course') return !option.otherCampus;
+		if (option.kind === 'compound') return hasContentBeyondCourses(option.group);
+		return false;
+	});
 }
 
 /** Courses an option contributes, ignoring non-course options. */
@@ -263,6 +380,14 @@ export function displayGroups(
 			// delete a genuine requirement along with the unusable codes, so keep
 			// the prose and strip only the codes.
 			if (option.kind === 'compound' && courses.every((code) => /_O\s/.test(code))) {
+				// Keep the compound when something inside it still stands on its own -
+				// CPSC 320's "(b)" is a credit requirement sitting beside Okanagan
+				// alternatives, and flattening the lot to prose threw the structured
+				// part away. The recursive render filters the unusable codes anyway.
+				if (hasContentBeyondCourses(option.group)) {
+					visible.push(option);
+					continue;
+				}
 				const prose = stripCodes(option.label);
 				if (prose) visible.push({ kind: 'condition', label: prose });
 				continue;

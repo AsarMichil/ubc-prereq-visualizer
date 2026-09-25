@@ -75,6 +75,13 @@ export class PathBuilderState {
 		return this.codes.includes(code);
 	}
 
+	/**
+	 * Credits a course carries, read straight off the graph. Bound so it can be
+	 * handed to `groupSatisfied` and passed down to the panel as a plain function.
+	 */
+	readonly creditsOf = (code: string): number =>
+		this.graph?.hasNode(code) ? this.graph.getNodeAttribute(code, 'creditMin') : 0;
+
 	get isEmpty(): boolean {
 		return this.codes.length === 0;
 	}
@@ -140,7 +147,10 @@ export class PathBuilderState {
 
 			const rows = displayGroups(requirementGroups(detail.prerequisite), drawn);
 			const unsatisfied = rows.some(
-				(row) => row.satisfiedBy.length === 0 && !row.unavailable && !groupSatisfied(row, drawn)
+				(row) =>
+					row.satisfiedBy.length === 0 &&
+					!row.unavailable &&
+					!groupSatisfied(row, drawn, this.creditsOf)
 			);
 			if (unsatisfied) flagged.add(code);
 		}
