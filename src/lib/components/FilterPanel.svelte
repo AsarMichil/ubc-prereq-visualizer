@@ -20,6 +20,26 @@
 
 <div class="flex flex-col gap-5 text-sm">
 	<section>
+		<h3 class="mb-2 text-xs font-semibold tracking-wide uppercase">Layout</h3>
+		<div class="flex rounded border border-[var(--line)] p-0.5 text-xs">
+			{#each [['faculty', 'Faculty'], ['related', 'Related']] as [value, label] (value)}
+				<button
+					type="button"
+					class="flex-1 rounded px-2 py-1"
+					style:background={explorer.layout === value ? 'var(--chip-active)' : 'transparent'}
+					aria-pressed={explorer.layout === value}
+					onclick={() => (explorer.layout = value as 'faculty' | 'related')}>{label}</button
+				>
+			{/each}
+		</div>
+		<p class="mt-1.5 text-[11px] text-[var(--ink-secondary)]">
+			{explorer.layout === 'related'
+				? 'Grouped by what courses actually connect to.'
+				: 'Grouped by faculty and subject.'}
+		</p>
+	</section>
+
+	<section>
 		<h3 class="mb-2 text-xs font-semibold tracking-wide uppercase">Year level</h3>
 		<div class="flex flex-wrap gap-1.5">
 			{#each YEAR_TIERS as label, tier (label)}

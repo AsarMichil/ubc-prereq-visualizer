@@ -9,23 +9,28 @@
 	 */
 	import { onMount } from 'svelte';
 	import { animateNodes } from 'sigma/utils';
+	import { createNodeBorderProgram } from '@sigma/node-border';
 	import { layeredLayout } from '$lib/graph/layered';
 	import type Sigma from 'sigma';
 	import type { CourseAttributes, EdgeAttributes } from '$lib/graph/loadGraph';
 	import { getExplorer } from '$lib/state/context';
 	import RegionLabels from './RegionLabels.svelte';
-	import {
-		DIMMED,
-		EDGE_COLOR,
-		FOCUS_COLORS,
-		GHOST_COLOR,
-		INK,
-		SURFACE,
-		yearColor
-	} from '$lib/graph/palette';
+	import { DIMMED, EDGE_COLOR, GHOST_COLOR, INK, SURFACE, yearColor } from '$lib/graph/palette';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
 
 	const explorer = getExplorer();
+
+	/**
+	 * The selection ring is drawn as part of the node rather than as an overlay.
+	 * A positioned element above the canvas sat at a fixed pixel size whatever the
+	 * zoom, and drifted off the mark while the camera moved.
+	 */
+	const BorderedNode = createNodeBorderProgram<CourseAttributes, EdgeAttributes>({
+		borders: [
+			{ color: { attribute: 'ringColor' }, size: { attribute: 'ringSize', defaultValue: 0 } },
+			{ color: { attribute: 'color' }, size: { fill: true } }
+		]
+	});
 
 	let container: HTMLDivElement;
 	let renderer: Sigma<CourseAttributes, EdgeAttributes> | undefined;
@@ -43,6 +48,8 @@
 
 			renderer = new SigmaClass(explorer.map.graph, container, {
 				allowInvalidContainer: true,
+				defaultNodeType: 'bordered',
+				nodeProgramClasses: { bordered: BorderedNode },
 				renderEdgeLabels: false,
 				enableEdgeEvents: true,
 				defaultNodeColor: '#888',
@@ -113,14 +120,11 @@
 		const hasFocus = explorer.hasFocus;
 		const neighbourhood = explorer.focusNeighbourhood;
 		const focus = explorer.focus;
-		const prerequisites = explorer.focusSets.prerequisites;
-		const unlocks = explorer.focusSets.unlocks;
 		const tier = explorer.tier;
 
 		const dim = DIMMED[theme];
 		const ghost = GHOST_COLOR[theme];
 		const edgeBase = EDGE_COLOR[theme];
-		const focusColors = FOCUS_COLORS[theme];
 
 		instance.setSetting('nodeReducer', (code, data) => {
 			const shown = visible.has(code);
@@ -131,24 +135,26 @@
 			let color = data.ghost ? ghost : yearColor(data.number, theme);
 			let zIndex = 0;
 
+			// Out of scope: recede almost into the surface. Selection reads as the
+			// rest of the map stepping back, not as the neighbourhood lighting up.
 			if (!shown || !inFocus) {
-				return { ...data, size: Math.max(size * 0.55, 1.5), color: dim, label: '', zIndex: -1 };
+				return {
+					...data,
+					size: Math.max(size * 0.4, 1),
+					color: dim,
+					label: '',
+					zIndex: -1,
+					ringColor: 'rgba(0,0,0,0)',
+					ringSize: 0
+				};
 			}
 
-			if (hasFocus) {
-				if (code === focus) {
-					color = focusColors.selected;
-					size = Math.max(size, 12);
-					zIndex = 3;
-				} else if (prerequisites.has(code)) {
-					color = focusColors.prerequisite;
-					size = Math.max(size, 7);
-					zIndex = 2;
-				} else if (unlocks.has(code)) {
-					color = focusColors.unlocks;
-					size = Math.max(size, 7);
-					zIndex = 2;
-				}
+			// In scope: neighbours keep their ordinary year colour and size. Only the
+			// selected course is marked, and only with a ring.
+			const selected = hasFocus && code === focus;
+			if (selected) {
+				size = Math.max(size, 9);
+				zIndex = 3;
 			}
 
 			return {
@@ -156,6 +162,8 @@
 				size,
 				color,
 				zIndex,
+				ringColor: selected ? INK[theme].primary : 'rgba(0,0,0,0)',
+				ringSize: selected ? 0.3 : 0,
 				// Far out, nothing gets a label — subject and faculty names are drawn
 				// as an overlay instead, so the canvas stays readable when zoomed out.
 				label: tier === 'far' && !hasFocus ? '' : data.label
@@ -172,22 +180,41 @@
 				return { ...data, hidden: true };
 			}
 
-			let color = edgeBase;
-			if (hasFocus) {
-				if (target === focus || prerequisites.has(target)) color = focusColors.prerequisite;
-				else if (source === focus || unlocks.has(source)) color = focusColors.unlocks;
-			}
-
 			return {
 				...data,
-				color,
-				size: hasFocus ? 1.6 : 0.7,
+				color: edgeBase,
+				size: hasFocus ? 1.1 : 0.7,
 				// Alternatives from the same "one of" are drawn dashed as a set.
 				type: data.groupId ? 'line' : 'line'
 			};
 		});
 
 		instance.refresh({ skipIndexation: true });
+	});
+
+	/**
+	 * Swaps node positions when the layout changes.
+	 *
+	 * Both arrangements are baked into the payload, so this only moves nodes
+	 * between two known coordinate sets - no layout is computed here. The camera
+	 * is left alone: the extents are comparable, and keeping it steady makes the
+	 * two arrangements directly comparable.
+	 */
+	$effect(() => {
+		const layout = explorer.layout;
+		if (!ready || !renderer || !explorer.map) return;
+
+		const graph = explorer.map.graph;
+		const targets: Record<string, { x: number; y: number }> = {};
+		graph.forEachNode((code, data) => {
+			targets[code] =
+				layout === 'related'
+					? { x: data.clusterX, y: data.clusterY }
+					: { x: data.baseX, y: data.baseY };
+		});
+
+		const instance = renderer;
+		animateNodes(graph, targets, { duration: 600 }, () => instance.refresh());
 	});
 
 	$effect(() => {

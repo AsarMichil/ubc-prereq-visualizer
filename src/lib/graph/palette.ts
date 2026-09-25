@@ -12,11 +12,13 @@
  * hold a visible lightness gap inside the ramp's usable range, and the
  * undergraduate/graduate split is the distinction the filters care about.
  *
- * Every value below was checked with the palette validator:
- *   ordinal ramp, light + dark ...... all checks pass
- *   focus roles, --pairs all ........ all checks pass (worst CVD ΔE 9.2 / 9.4)
- * The aqua focus role sits at 2.74:1 on the light surface, so nodes in that role
- * always carry a visible label — the relief rule, not a dismissable warning.
+ * Every value below was checked with the palette validator: the ordinal ramp
+ * passes all checks in both light and dark.
+ *
+ * Selection no longer uses colour at all. It used to tint prerequisites orange
+ * and dependents aqua, but that made choosing a course repaint half the map;
+ * now the neighbourhood keeps its ordinary colours and everything else recedes,
+ * so colour means one thing at a time.
  */
 
 export type Theme = 'light' | 'dark';
@@ -30,15 +32,6 @@ const YEAR_COLORS: Record<Theme, string[]> = {
 	light: ['#86b6ef', '#3987e5', '#256abf', '#184f95', '#0d366b'],
 	// steps 600, 450, 350, 200, 100
 	dark: ['#184f95', '#2a78d6', '#5598e7', '#9ec5f4', '#cde2fb']
-};
-
-/** Roles in the focus view. Deliberately off the blue ramp so they never read as a year. */
-export const FOCUS_COLORS: Record<
-	Theme,
-	{ prerequisite: string; unlocks: string; selected: string }
-> = {
-	light: { prerequisite: '#eb6834', unlocks: '#1baf7a', selected: '#0b0b0b' },
-	dark: { prerequisite: '#d95926', unlocks: '#199e70', selected: '#ffffff' }
 };
 
 /**
