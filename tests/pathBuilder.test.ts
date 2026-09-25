@@ -27,6 +27,8 @@ function makeGraph(edges: [string, string][]): Graph<CourseAttributes, EdgeAttri
 			baseY: 0,
 			clusterX: 0,
 			clusterY: 0,
+			forceX: 0,
+			forceY: 0,
 			community: -1,
 			size: 1,
 			color: '#000',

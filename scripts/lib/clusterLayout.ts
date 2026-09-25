@@ -28,8 +28,16 @@ export interface ClusterLayoutInput {
 
 export interface ClusterLayoutResult {
 	positions: Map<string, { x: number; y: number }>;
-	/** Community id per course, so the UI can label and colour regions. */
+	/** Community id per *connected* course, so the UI can label and colour regions. */
 	communityOf: Map<string, number>;
+	/**
+	 * Community id per course, including the ones with no edges - they are filed
+	 * under their subject's community, and a subject with no connected course
+	 * anywhere gets a community of its own. Other layouts need this to group the
+	 * same courses the same way; `communityOf` alone would leave two thirds of
+	 * the corpus unassigned.
+	 */
+	assignedCommunity: Map<string, number>;
 	/** Label and centre for each community, derived from its dominant subjects. */
 	communities: {
 		id: number;
@@ -80,6 +88,34 @@ function labelFor(members: string[], subjectOf: Map<string, string>): string {
 		.join(' · ');
 }
 
+/**
+ * The community each subject mostly belongs to, by majority vote of its
+ * connected courses.
+ *
+ * Two thirds of courses have no prerequisite edges and so no structural signal
+ * at all. Their subject is the only thing left to go on, and it is a good
+ * proxy: a subject's connected courses overwhelmingly land in one community.
+ */
+export function dominantCommunityBySubject(
+	communityOf: Map<string, number>,
+	subjectOf: Map<string, string>
+): Map<string, number> {
+	const votes = new Map<string, Map<number, number>>();
+	for (const [code, community] of communityOf) {
+		const subject = subjectOf.get(code);
+		if (!subject) continue;
+		const tally = votes.get(subject) ?? votes.set(subject, new Map()).get(subject)!;
+		tally.set(community, (tally.get(community) ?? 0) + 1);
+	}
+
+	const dominant = new Map<string, number>();
+	for (const [subject, tally] of votes) {
+		const [best] = [...tally.entries()].sort((a, b) => b[1] - a[1]);
+		dominant.set(subject, best[0]);
+	}
+	return dominant;
+}
+
 export function clusterLayout(input: ClusterLayoutInput): ClusterLayoutResult {
 	const { codes, edges, subjectOf } = input;
 	const present = new Set(codes);
@@ -101,19 +137,7 @@ export function clusterLayout(input: ClusterLayoutInput): ClusterLayoutResult {
 	}
 
 	// --- 2. Unconnected courses inherit their subject's dominant community ---
-	// Their subject is the only signal available; edges give none.
-	const subjectVote = new Map<string, Map<number, number>>();
-	for (const [code, community] of communityOf) {
-		const subject = subjectOf.get(code);
-		if (!subject) continue;
-		const votes = subjectVote.get(subject) ?? subjectVote.set(subject, new Map()).get(subject)!;
-		votes.set(community, (votes.get(community) ?? 0) + 1);
-	}
-	const subjectCommunity = new Map<string, number>();
-	for (const [subject, votes] of subjectVote) {
-		const [best] = [...votes.entries()].sort((a, b) => b[1] - a[1]);
-		subjectCommunity.set(subject, best[0]);
-	}
+	const subjectCommunity = dominantCommunityBySubject(communityOf, subjectOf);
 
 	// Subjects with no connected course anywhere get their own bucket, so they
 	// are not all dumped into whichever community happens to be numbered first.
@@ -124,6 +148,13 @@ export function clusterLayout(input: ClusterLayoutInput): ClusterLayoutResult {
 		const subject = subjectOf.get(code) ?? '';
 		if (!subjectCommunity.has(subject)) subjectCommunity.set(subject, nextCommunity++);
 		(orbiting.get(subject) ?? orbiting.set(subject, []).get(subject)!).push(code);
+	}
+
+	// Every course's community, including the ones Louvain never saw.
+	const assignedCommunity = new Map(communityOf);
+	for (const [subject, group] of orbiting) {
+		const community = subjectCommunity.get(subject)!;
+		for (const code of group) assignedCommunity.set(code, community);
 	}
 
 	// --- 3. Group members per community -------------------------------------
@@ -235,5 +266,5 @@ export function clusterLayout(input: ClusterLayoutInput): ClusterLayoutResult {
 		if (!positions.has(code)) positions.set(code, { x: 0, y: 0 });
 	}
 
-	return { positions, communityOf, communities };
+	return { positions, communityOf, assignedCommunity, communities };
 }
