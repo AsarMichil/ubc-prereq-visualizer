@@ -6,6 +6,7 @@
  * grade thresholds, course codes) and lump everything else into WORD runs that
  * the parser can fold into a free-text condition.
  */
+import { matchCreditRequirement, type CreditRequirement } from './creditRequirement.ts';
 import { parseCourseCode, type ParsedCode } from './normalizeCode.ts';
 
 export type TokenType =
@@ -22,6 +23,7 @@ export type TokenType =
 	| 'COMMA'
 	| 'SEMI'
 	| 'NUMBER'
+	| 'CREDITS'
 	| 'WORD';
 
 export interface Token {
@@ -36,6 +38,8 @@ export interface Token {
 	grade?: { min: number; unit: 'percent' | 'grade' };
 	/** NUMBER: a bare course number continuing an earlier subject ("MATH 100, 102"). */
 	value?: string;
+	/** CREDITS: a quantity drawn from a subject, optionally above a level. */
+	credits?: CreditRequirement;
 }
 
 const WORD_TO_COUNT: Record<string, number | 'all'> = {
@@ -112,6 +116,16 @@ export function tokenize(input: string): Token[] {
 		// meaning of their own; treat them as whitespace so the code inside is seen.
 		if (/[\s[\]]/.test(input[pos])) {
 			pos++;
+			continue;
+		}
+
+		// Credit requirements are checked before the pattern table: they begin with
+		// a bare number, which NUMBER would otherwise claim, and they span several
+		// words that WORD would shred.
+		const credits = matchCreditRequirement(input.slice(pos));
+		if (credits) {
+			tokens.push({ type: 'CREDITS', raw: credits.raw, start: pos, credits });
+			pos += credits.length;
 			continue;
 		}
 

@@ -16,6 +16,22 @@ export type RequirementNode =
 	| { kind: 'all'; children: RequirementNode[] }
 	| { kind: 'oneOf'; groupId: string; children: RequirementNode[] }
 	| { kind: 'nOf'; n: number; groupId: string; children: RequirementNode[] }
+	/**
+	 * "at least 3 credits from MATH or STAT at 200 level or above" - a quantity
+	 * drawn from a set defined by subject and level, not a list of courses.
+	 *
+	 * Distinct from `condition` because it is checkable: given what a student has,
+	 * you can add up the matching credits. 23 clauses state requirements this way.
+	 */
+	| {
+			kind: 'credits';
+			count: number;
+			/** Subjects the credits may come from, campus suffix stripped. */
+			subjects: string[];
+			/** Lowest course number that counts, e.g. 200. Null when unstated. */
+			minLevel: number | null;
+			raw: string;
+	  }
 	/** "a score of 68% or higher in MATH 321" — a threshold bound to a specific course. */
 	| {
 			kind: 'withGrade';

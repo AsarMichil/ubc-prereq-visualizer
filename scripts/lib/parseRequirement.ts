@@ -23,6 +23,7 @@ import { tokenize, type Token, type TokenType } from './tokenize.ts';
 
 /** Token types that can begin a real requirement rather than free text. */
 const STARTS_REQUIREMENT: TokenType[] = [
+	'CREDITS',
 	'COURSE',
 	'HS_COURSE',
 	'QUANT',
@@ -170,6 +171,12 @@ class Parser {
 					child,
 					raw: token.raw.trim()
 				};
+			}
+
+			case 'CREDITS': {
+				this.pos += 1;
+				const { count, subjects, minLevel } = token.credits!;
+				return { kind: 'credits', count, subjects, minLevel, raw: token.raw };
 			}
 
 			case 'QUANT':

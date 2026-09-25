@@ -69,6 +69,11 @@
 							{option.label}
 							<span class="text-[var(--ink-muted)]">· high school</span>
 						</p>
+					{:else if option.kind === 'credits'}
+						<p class="px-2 py-1 text-xs text-[var(--ink-secondary)]">
+							<span class="font-medium">{option.count} credits</span>
+							from {option.subjects.join(' or ')}{option.minLevel ? ` at ${option.minLevel}+` : ''}
+						</p>
 					{:else if option.kind === 'course'}
 						<label
 							class="flex cursor-pointer items-start gap-2 rounded px-2 py-1 text-xs hover:bg-[var(--chip)]"

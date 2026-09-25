@@ -32,6 +32,11 @@
 			<span class="font-medium">{LABELS[node.conditionType] ?? 'Also'}:</span>
 			{node.raw}
 		</span>
+	{:else if node.kind === 'credits'}
+		<span class="text-xs text-[var(--ink-secondary)]">
+			<span class="font-medium">{node.count} credits</span>
+			from {node.subjects.join(' or ')}{node.minLevel ? ` at ${node.minLevel}+` : ''}
+		</span>
 	{:else if node.kind === 'unparsed'}
 		<span class="text-xs text-[var(--ink-secondary)] italic">{node.raw}</span>
 	{:else if node.kind === 'withGrade'}

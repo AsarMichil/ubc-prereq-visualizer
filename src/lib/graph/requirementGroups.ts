@@ -10,8 +10,25 @@
  */
 import type { CourseCode, RequirementNode } from '../types';
 
+/** Reads back as the requirement, e.g. "3 credits from MATH or STAT at 200+". */
+export function describeCredits(
+	count: number,
+	subjects: string[],
+	minLevel: number | null
+): string {
+	return `${count} credits from ${subjects.join(' or ')}${minLevel ? ` at ${minLevel}+` : ''}`;
+}
+
 export type OptionNode =
 	| { kind: 'course'; code: CourseCode; label: string; otherCampus: boolean }
+	/** A quantity of credits from a subject, rather than named courses. */
+	| {
+			kind: 'credits';
+			label: string;
+			count: number;
+			subjects: string[];
+			minLevel: number | null;
+	  }
 	/** A BC secondary-school course; it can never be expanded further. */
 	| { kind: 'highSchool'; label: string }
 	/** A non-course requirement (standing, permission); shown but not selectable. */
@@ -36,6 +53,8 @@ function labelOf(node: RequirementNode): string {
 			return node.name;
 		case 'condition':
 			return node.raw;
+		case 'credits':
+			return describeCredits(node.count, node.subjects, node.minLevel);
 		case 'unparsed':
 			return node.raw;
 		case 'withGrade':
@@ -93,13 +112,29 @@ function toOption(node: RequirementNode, idPrefix: string, index: number): Optio
 		case 'condition':
 		case 'unparsed':
 			return { kind: 'condition', label };
-		default:
+		case 'credits':
+			return {
+				kind: 'credits',
+				label,
+				count: inner.count,
+				subjects: inner.subjects,
+				minLevel: inner.minLevel
+			};
+		// Only the compound kinds recurse. Listing them explicitly rather than
+		// falling through means a future node kind becomes a plain condition
+		// instead of bouncing between toOption and toGroup forever - which is
+		// exactly what `credits` did before it had a case here.
+		case 'all':
+		case 'oneOf':
+		case 'nOf':
 			return {
 				kind: 'compound',
 				label,
 				courses: coursesIn(inner),
 				group: toGroup(inner, `${idPrefix}.${index}`)
 			};
+		default:
+			return { kind: 'condition', label };
 	}
 }
 
@@ -220,6 +255,19 @@ function stripCodes(label: string): string {
 	return words.length >= 3 ? cleaned.replace(/[:;,]+$/, '') : '';
 }
 
+/**
+ * True when a group holds something meaningful that is not an unusable course -
+ * a credit requirement, or a course that can actually be taken here.
+ */
+function hasContentBeyondCourses(group: RequirementGroup): boolean {
+	return group.options.some((option) => {
+		if (option.kind === 'credits') return true;
+		if (option.kind === 'course') return !option.otherCampus;
+		if (option.kind === 'compound') return hasContentBeyondCourses(option.group);
+		return false;
+	});
+}
+
 /** Courses an option contributes, ignoring non-course options. */
 function optionCourses(option: OptionNode): CourseCode[] {
 	if (option.kind === 'course') return [option.code];
@@ -263,6 +311,14 @@ export function displayGroups(
 			// delete a genuine requirement along with the unusable codes, so keep
 			// the prose and strip only the codes.
 			if (option.kind === 'compound' && courses.every((code) => /_O\s/.test(code))) {
+				// Keep the compound when something inside it still stands on its own -
+				// CPSC 320's "(b)" is a credit requirement sitting beside Okanagan
+				// alternatives, and flattening the lot to prose threw the structured
+				// part away. The recursive render filters the unusable codes anyway.
+				if (hasContentBeyondCourses(option.group)) {
+					visible.push(option);
+					continue;
+				}
 				const prose = stripCodes(option.label);
 				if (prose) visible.push({ kind: 'condition', label: prose });
 				continue;
