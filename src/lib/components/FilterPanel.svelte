@@ -3,10 +3,17 @@
 	 * Filters are visual, not structural: every control here changes how nodes are
 	 * painted, never where they sit, so the map never reflows under the user.
 	 */
+	import type { LayoutName } from '$lib/state/explorer.svelte';
 	import { getExplorer } from '$lib/state/context';
 	import { YEAR_TIERS, yearSwatches } from '$lib/graph/palette';
 
 	const explorer = getExplorer();
+
+	const LAYOUT_BLURB: Record<LayoutName, string> = {
+		faculty: 'Grouped by faculty and subject.',
+		related: 'Grouped by what courses actually connect to.',
+		force: 'Simulated from the edges, so distance means relatedness.'
+	};
 
 	const swatches = $derived(yearSwatches(explorer.theme));
 	const subjects = $derived(explorer.map?.subjects ?? []);
@@ -22,20 +29,18 @@
 	<section>
 		<h3 class="mb-2 text-xs font-semibold tracking-wide uppercase">Layout</h3>
 		<div class="flex rounded border border-[var(--line)] p-0.5 text-xs">
-			{#each [['faculty', 'Faculty'], ['related', 'Related']] as [value, label] (value)}
+			{#each [['faculty', 'Faculty'], ['related', 'Related'], ['force', 'Force']] as [value, label] (value)}
 				<button
 					type="button"
 					class="flex-1 rounded px-2 py-1"
 					style:background={explorer.layout === value ? 'var(--chip-active)' : 'transparent'}
 					aria-pressed={explorer.layout === value}
-					onclick={() => (explorer.layout = value as 'faculty' | 'related')}>{label}</button
+					onclick={() => (explorer.layout = value as LayoutName)}>{label}</button
 				>
 			{/each}
 		</div>
 		<p class="mt-1.5 text-[11px] text-[var(--ink-secondary)]">
-			{explorer.layout === 'related'
-				? 'Grouped by what courses actually connect to.'
-				: 'Grouped by faculty and subject.'}
+			{LAYOUT_BLURB[explorer.layout]}
 		</p>
 	</section>
 

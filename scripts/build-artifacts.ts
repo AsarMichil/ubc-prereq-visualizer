@@ -18,6 +18,7 @@ import { brotliCompressSync } from 'node:zlib';
 import type { Course, RequirementNode } from '../src/lib/types.ts';
 import { buildCoverage, formatCoverage, type ClauseSample } from './lib/coverage.ts';
 import { clusterLayout } from './lib/clusterLayout.ts';
+import { forceLayout } from './lib/forceLayout.ts';
 import { layoutMap } from './lib/layoutMap.ts';
 import { loadRaw } from './lib/loadRaw.ts';
 import { buildModel, iterateRefs } from './lib/model.ts';
@@ -193,9 +194,23 @@ async function main(): Promise<void> {
 		edges: prereqPairs,
 		subjectOf
 	});
+	// A third arrangement: the same communities, but with the edges themselves
+	// deciding where each course sits inside one.
+	const forced = forceLayout({
+		codes: allNodes.map((node) => node.code),
+		edges: prereqPairs,
+		subjectOf,
+		communityOf: clustered.communityOf,
+		assignedCommunity: clustered.assignedCommunity
+	});
+
 	console.log(
 		`Layout done in ${((Date.now() - started) / 1000).toFixed(1)}s ` +
 			`(${clustered.communities.length} relatedness communities)`
+	);
+	console.log(
+		`Force layout: mean edge ${forced.quality.intra.toFixed(0)} within a community, ` +
+			`${forced.quality.inter.toFixed(0)} across (${forced.quality.ratio.toFixed(2)}x separation)`
 	);
 
 	// --- Encode ------------------------------------------------------------
@@ -215,6 +230,7 @@ async function main(): Promise<void> {
 		const course = courseByCode.get(node.code);
 		const point = layout.positions.get(node.code) ?? { x: 0, y: 0 };
 		const cluster = clustered.positions.get(node.code) ?? { x: 0, y: 0 };
+		const force = forced.positions.get(node.code) ?? { x: 0, y: 0 };
 		return [
 			node.code,
 			course?.title ?? '',
@@ -227,7 +243,9 @@ async function main(): Promise<void> {
 			node.flags,
 			round(cluster.x),
 			round(cluster.y),
-			clustered.communityOf.get(node.code) ?? -1
+			clustered.communityOf.get(node.code) ?? -1,
+			round(force.x),
+			round(force.y)
 		];
 	});
 
@@ -258,14 +276,22 @@ async function main(): Promise<void> {
 		})),
 		// Region labels for the relatedness layout, named after their dominant
 		// subjects - the equivalent of facultyBoxes for the other arrangement.
-		communities: clustered.communities.map((community) => ({
-			id: community.id,
-			label: community.label,
-			x: round(community.x),
-			y: round(community.y),
-			size: community.size,
-			radius: round(community.radius)
-		})),
+		communities: clustered.communities.map((community) => {
+			// Same communities, different geometry: the force layout settles them
+			// wherever the edges take them, so a label needs its own centre there.
+			const force = forced.communities.get(community.id);
+			return {
+				id: community.id,
+				label: community.label,
+				x: round(community.x),
+				y: round(community.y),
+				size: community.size,
+				radius: round(community.radius),
+				forceX: round(force?.x ?? 0),
+				forceY: round(force?.y ?? 0),
+				forceRadius: round(force?.radius ?? 0)
+			};
+		}),
 		nodes,
 		edges: encodedEdges,
 		equivalences: classes.map((group) =>

@@ -17,6 +17,10 @@ import { yearTier, type Theme } from '../graph/palette.ts';
 
 export type NodeRole = 'normal' | 'selected' | 'prerequisite' | 'unlocks';
 
+export type LayoutName = 'faculty' | 'related' | 'force';
+
+const LAYOUTS: LayoutName[] = ['faculty', 'related', 'force'];
+
 const ALL_YEARS = [0, 1, 2, 3, 4];
 const UNDERGRAD_YEARS = [0, 1, 2, 3];
 
@@ -41,10 +45,11 @@ export class ExplorerState {
 
 	/**
 	 * Which baked arrangement is showing. `faculty` is the org chart; `related`
-	 * positions courses by what they actually connect to. Both are precomputed,
-	 * so switching never runs a layout.
+	 * groups courses by community and draws each group as a tidy cluster; `force`
+	 * simulates the edges, so position carries meaning inside a group too. All
+	 * three are precomputed, so switching never runs a layout.
 	 */
-	layout = $state<'faculty' | 'related'>('faculty');
+	layout = $state<LayoutName>('faculty');
 
 	focus = $state<string | null>(null);
 	depth = $state(2);
@@ -186,7 +191,8 @@ export class ExplorerState {
 		if (Number.isInteger(depth) && depth >= 1 && depth <= 4) this.depth = depth;
 		this.hideIsolated = params.get('connected') === '1';
 		this.showGhosts = params.get('ghosts') === '1';
-		if (params.get('layout') === 'related') this.layout = 'related';
+		const layout = params.get('layout');
+		if (layout && (LAYOUTS as string[]).includes(layout)) this.layout = layout as LayoutName;
 	}
 }
 

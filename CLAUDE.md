@@ -41,7 +41,7 @@ bun run test         vitest
 bun run check        svelte-check
 bun run lint         prettier + eslint
 bun run scrape       re-snapshot the UBC calendar (~5 min, hits their API)
-bun run build:data   re-parse and rebuild static/data
+bun run build:data   re-parse and rebuild static/data (~1 min: runs the force layout)
 ```
 
 ## Gotchas
