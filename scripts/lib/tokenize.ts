@@ -6,6 +6,7 @@
  * grade thresholds, course codes) and lump everything else into WORD runs that
  * the parser can fold into a free-text condition.
  */
+import { matchCreditExclusion, type CreditExclusionRef } from './creditExclusion.ts';
 import { matchCreditRequirement, type CreditRequirement } from './creditRequirement.ts';
 import { parseCourseCode, type ParsedCode } from './normalizeCode.ts';
 
@@ -24,6 +25,7 @@ export type TokenType =
 	| 'SEMI'
 	| 'NUMBER'
 	| 'CREDITS'
+	| 'CREDIT_EXCLUSION'
 	| 'WORD';
 
 export interface Token {
@@ -40,6 +42,8 @@ export interface Token {
 	value?: string;
 	/** CREDITS: a quantity drawn from a subject, optionally above a level. */
 	credits?: CreditRequirement;
+	/** CREDIT_EXCLUSION: the course naming a credit exclusion list. */
+	exclusion?: CreditExclusionRef;
 }
 
 const WORD_TO_COUNT: Record<string, number | 'all'> = {
@@ -122,6 +126,16 @@ export function tokenize(input: string): Token[] {
 		// Credit requirements are checked before the pattern table: they begin with
 		// a bare number, which NUMBER would otherwise claim, and they span several
 		// words that WORD would shred.
+		// Checked before COURSE for the same reason: the phrase wraps a course code,
+		// and matching that code on its own is what made the list look like a
+		// prerequisite.
+		const exclusion = matchCreditExclusion(input.slice(pos));
+		if (exclusion) {
+			tokens.push({ type: 'CREDIT_EXCLUSION', raw: exclusion.raw, start: pos, exclusion });
+			pos += exclusion.length;
+			continue;
+		}
+
 		const credits = matchCreditRequirement(input.slice(pos));
 		if (credits) {
 			tokens.push({ type: 'CREDITS', raw: credits.raw, start: pos, credits });

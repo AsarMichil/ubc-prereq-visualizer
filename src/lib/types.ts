@@ -32,6 +32,15 @@ export type RequirementNode =
 			minLevel: number | null;
 			raw: string;
 	  }
+	/**
+	 * "any course on the STAT 200 credit exclusion list" - satisfied by the named
+	 * course or by anything UBC deems equivalent to it.
+	 *
+	 * The list itself lives on a page the calendar links to and the scrape cannot
+	 * follow, so the members are unknown. The named course is kept as a real
+	 * reference because a course is always on its own exclusion list.
+	 */
+	| { kind: 'creditExclusion'; code: CourseCode; raw: string }
 	/** "a score of 68% or higher in MATH 321" — a threshold bound to a specific course. */
 	| {
 			kind: 'withGrade';

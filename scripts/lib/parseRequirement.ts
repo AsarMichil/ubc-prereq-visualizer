@@ -24,6 +24,7 @@ import { tokenize, type Token, type TokenType } from './tokenize.ts';
 /** Token types that can begin a real requirement rather than free text. */
 const STARTS_REQUIREMENT: TokenType[] = [
 	'CREDITS',
+	'CREDIT_EXCLUSION',
 	'COURSE',
 	'HS_COURSE',
 	'QUANT',
@@ -179,6 +180,11 @@ class Parser {
 				return { kind: 'credits', count, subjects, minLevel, raw: token.raw };
 			}
 
+			case 'CREDIT_EXCLUSION': {
+				this.pos += 1;
+				return { kind: 'creditExclusion', code: token.exclusion!.course.code, raw: token.raw };
+			}
+
 			case 'QUANT':
 				return this.parseQuantified();
 
@@ -247,12 +253,28 @@ class Parser {
 		// "One of MATH 100, 102, 104" — later entries drop the subject, so carry it.
 		let lastSubject: string | null = null;
 
+		// Set when the item just taken was a credit exclusion reference; the list it
+		// names follows immediately, with no separator (see `continues`).
+		let afterExclusion = false;
+
 		const takeCourse = (): boolean => {
 			const token = this.peek();
+			afterExclusion = false;
 			if (token?.type === 'COURSE') {
 				this.pos += 1;
 				lastSubject = token.course!.subject;
 				items.push({ kind: 'course', code: token.course!.code, raw: token.raw.trim() });
+				return true;
+			}
+			if (token?.type === 'CREDIT_EXCLUSION') {
+				this.pos += 1;
+				lastSubject = token.exclusion!.course.subject;
+				afterExclusion = true;
+				items.push({
+					kind: 'creditExclusion',
+					code: token.exclusion!.course.code,
+					raw: token.raw.trim()
+				});
 				return true;
 			}
 			if (token?.type === 'HS_COURSE') {
@@ -281,9 +303,18 @@ class Parser {
 		const continues = (offset: number): boolean =>
 			this.is('COURSE', offset) ||
 			this.is('HS_COURSE', offset) ||
+			this.is('CREDIT_EXCLUSION', offset) ||
 			(this.is('NUMBER', offset) && lastSubject !== null);
 
 		for (;;) {
+			// "One of any course on the MATH_V 100 credit exclusion list [ MATH_V 190,
+			// SCIE_V 001 ...". The bracket that introduced the list is dropped as
+			// punctuation, so the members abut the reference with no separator - but
+			// they are plainly still part of the same "One of".
+			if (afterExclusion && continues(0)) {
+				if (!takeCourse()) break;
+				continue;
+			}
 			if ((this.is('COMMA') || this.is('AND') || this.is('OR')) && continues(1)) {
 				this.pos += 1;
 			} else if ((this.is('COMMA') || this.is('SEMI')) && this.is('AND', 1) && continues(2)) {
@@ -452,6 +483,7 @@ export function collectCourseCodes(node: RequirementNode | null): CourseCode[] {
 	const walk = (current: RequirementNode): void => {
 		switch (current.kind) {
 			case 'course':
+			case 'creditExclusion':
 				found.add(current.code);
 				break;
 			case 'unparsed':

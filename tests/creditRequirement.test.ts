@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { matchCreditRequirement } from '../scripts/lib/creditRequirement.ts';
 import { parseRequirement } from '../scripts/lib/parseRequirement.ts';
-import { displayGroups, requirementGroups } from '../src/lib/graph/requirementGroups.ts';
+import {
+	creditsToward,
+	displayGroups,
+	groupSatisfied,
+	requirementGroups
+} from '../src/lib/graph/requirementGroups.ts';
 
 describe('matchCreditRequirement', () => {
 	it('reads a subject list with a level floor', () => {
@@ -80,5 +85,56 @@ describe('credit requirements in a parsed clause', () => {
 			);
 
 		expect(flatten(row.visible)).toContain('credits');
+	});
+});
+
+describe('satisfying a credit quota', () => {
+	const clause = 'at least 3 credits from MATH_V or STAT_V at 200 level or above';
+	const groupFor = () => requirementGroups(parseRequirement(clause))[0];
+	/** Every course in the corpus is 3 credits unless a test says otherwise. */
+	const threeCredits = () => 3;
+
+	it('counts a matching course toward the quota', () => {
+		// The point of the node: MATH 200 is not named anywhere in the clause, but
+		// it plainly satisfies it.
+		expect(groupSatisfied(groupFor(), new Set(['MATH 200']), threeCredits)).toBe(true);
+	});
+
+	it('adds up several courses to reach the count', () => {
+		const clause6 = 'at least 6 credits from MATH_V or STAT_V at 200 level or above';
+		const group = requirementGroups(parseRequirement(clause6))[0];
+		expect(groupSatisfied(group, new Set(['MATH 200']), threeCredits)).toBe(false);
+		expect(groupSatisfied(group, new Set(['MATH 200', 'STAT 251']), threeCredits)).toBe(true);
+	});
+
+	it('rejects a course below the level floor', () => {
+		expect(groupSatisfied(groupFor(), new Set(['MATH 100']), threeCredits)).toBe(false);
+	});
+
+	it('rejects a subject outside the quota', () => {
+		expect(groupSatisfied(groupFor(), new Set(['CPSC 221']), threeCredits)).toBe(false);
+	});
+
+	it('does not let an Okanagan course fill a Vancouver quota', () => {
+		// "MATH_V or STAT_V" normalizes to MATH/STAT, and the Okanagan equivalents
+		// are listed as their own alternatives - so MATH_O 200 must not count here.
+		expect(groupSatisfied(groupFor(), new Set(['MATH_O 200']), threeCredits)).toBe(false);
+	});
+
+	it('uses each course’s real credit value', () => {
+		const oneCredit = () => 1;
+		expect(groupSatisfied(groupFor(), new Set(['MATH 200']), oneCredit)).toBe(false);
+	});
+
+	it('ignores quotas entirely when no credit lookup is given', () => {
+		// Callers that only render structure must not start flagging rows they have
+		// no way to evaluate.
+		expect(groupSatisfied(groupFor(), new Set())).toBe(true);
+	});
+
+	it('reports which courses counted, for display', () => {
+		const option = groupFor().options.find((o) => o.kind === 'credits')!;
+		const progress = creditsToward(option as never, ['MATH 200', 'CPSC 221'], threeCredits);
+		expect(progress).toEqual({ courses: ['MATH 200'], total: 3 });
 	});
 });
