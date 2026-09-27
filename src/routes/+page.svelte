@@ -10,6 +10,7 @@
 	import PathBuilder from '$lib/components/PathBuilder.svelte';
 	import { PathBuilderState } from '$lib/state/pathBuilder.svelte';
 	import { setBuilder, setExplorer } from '$lib/state/context';
+	import { flags } from '$lib/flags.svelte';
 	import { loadMap } from '$lib/graph/loadGraph';
 	import { ExplorerState } from '$lib/state/explorer.svelte';
 	import { yearSwatches, type Theme } from '$lib/graph/palette';
@@ -27,6 +28,17 @@
 	 * growing outward from one course in either direction.
 	 */
 	let mode = $state<'explore' | 'build'>('explore');
+
+	/**
+	 * Explore is behind a flag while it is still rough; building a path is not.
+	 *
+	 * `mode` holds what was last asked for and `activeMode` what is actually
+	 * shown, so turning the flag on in the console switches straight to the view
+	 * without a reload, and turning it off falls back instead of rendering a
+	 * view that is meant to be hidden.
+	 */
+	const exploreEnabled = $derived(flags.enabled('explore'));
+	const activeMode = $derived(mode === 'explore' && !exploreEnabled ? 'build' : mode);
 
 	let error = $state<string | null>(null);
 	let panelOpen = $state(true);
@@ -73,11 +85,12 @@
 	 * something on screen joins that component, one that isn't starts its own.
 	 */
 	function selectCourse(code: string): void {
-		if (mode === 'build') builder.select(code);
+		if (activeMode === 'build') builder.select(code);
 		else explorer.focus = code;
 	}
 
 	function setMode(next: 'explore' | 'build'): void {
+		if (next === 'explore' && !exploreEnabled) return;
 		mode = next;
 		// Carry a course chosen on the map over into the builder.
 		if (next === 'build' && explorer.focus && !builder.has(explorer.focus)) {
@@ -100,32 +113,36 @@
 
 <div class="flex h-screen w-screen flex-col overflow-hidden">
 	<header class="flex items-center gap-4 border-b border-[var(--line)] px-4 py-2.5">
-		<button
-			type="button"
-			class="rounded border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--chip)]"
-			onclick={() => (panelOpen = !panelOpen)}
-			aria-expanded={panelOpen}
-			disabled={mode === 'build'}
-			class:opacity-40={mode === 'build'}>{panelOpen ? '‹' : '›'} Filters</button
-		>
+		{#if exploreEnabled}
+			<button
+				type="button"
+				class="rounded border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--chip)]"
+				onclick={() => (panelOpen = !panelOpen)}
+				aria-expanded={panelOpen}
+				disabled={activeMode === 'build'}
+				class:opacity-40={activeMode === 'build'}>{panelOpen ? '‹' : '›'} Filters</button
+			>
+		{/if}
 
 		<h1 class="text-sm font-semibold whitespace-nowrap">UBC Prerequisites</h1>
 
-		<div class="flex rounded border border-[var(--line)] p-0.5 text-xs">
-			{#each [['explore', 'Explore'], ['build', 'Build a path']] as [value, label] (value)}
-				<button
-					type="button"
-					class="rounded px-2.5 py-1"
-					style:background={mode === value ? 'var(--chip-active)' : 'transparent'}
-					aria-pressed={mode === value}
-					onclick={() => setMode(value as 'explore' | 'build')}>{label}</button
-				>
-			{/each}
-		</div>
+		{#if exploreEnabled}
+			<div class="flex rounded border border-[var(--line)] p-0.5 text-xs">
+				{#each [['explore', 'Explore'], ['build', 'Build a path']] as [value, label] (value)}
+					<button
+						type="button"
+						class="rounded px-2.5 py-1"
+						style:background={activeMode === value ? 'var(--chip-active)' : 'transparent'}
+						aria-pressed={activeMode === value}
+						onclick={() => setMode(value as 'explore' | 'build')}>{label}</button
+					>
+				{/each}
+			</div>
+		{/if}
 
 		<div class="max-w-md flex-1"><SearchBox onSelect={selectCourse} /></div>
 
-		{#if mode === 'build' && !builder.isEmpty}
+		{#if activeMode === 'build' && !builder.isEmpty}
 			<button
 				type="button"
 				class="rounded border border-[var(--line)] px-2.5 py-1 text-xs whitespace-nowrap hover:bg-[var(--chip)]"
@@ -140,7 +157,7 @@
 
 		<div class="ml-auto flex items-center gap-4 text-xs text-[var(--ink-secondary)]">
 			<!-- Legend: identity is never colour alone, so the swatches are labelled. -->
-			<div class="hidden items-center gap-2 lg:flex" class:invisible={mode === 'build'}>
+			<div class="hidden items-center gap-2 lg:flex" class:invisible={activeMode === 'build'}>
 				{#each swatches as swatch (swatch.label)}
 					<span class="flex items-center gap-1">
 						<span class="h-2.5 w-2.5 rounded-full" style:background={swatch.color}></span>
@@ -148,14 +165,17 @@
 					</span>
 				{/each}
 			</div>
-			<span class="tabular-nums"
-				>{visibleCount.toLocaleString()} / {nodeCount.toLocaleString()}</span
-			>
+			<!-- A filtered-of-total count only means something next to the filters. -->
+			{#if activeMode === 'explore'}
+				<span class="tabular-nums"
+					>{visibleCount.toLocaleString()} / {nodeCount.toLocaleString()}</span
+				>
+			{/if}
 		</div>
 	</header>
 
 	<div class="flex min-h-0 flex-1">
-		{#if panelOpen && mode === 'explore'}
+		{#if panelOpen && activeMode === 'explore'}
 			<aside
 				class="w-64 shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-4"
 			>
@@ -174,7 +194,7 @@
 						</p>
 					</div>
 				</div>
-			{:else if explorer.map && mode === 'build'}
+			{:else if explorer.map && activeMode === 'build'}
 				<PathBuilder />
 			{:else if explorer.map}
 				<GraphCanvas />
@@ -185,7 +205,7 @@
 			{/if}
 		</main>
 
-		{#if mode === 'explore'}
+		{#if activeMode === 'explore'}
 			<CourseDetail />
 		{/if}
 	</div>

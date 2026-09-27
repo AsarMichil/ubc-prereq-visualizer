@@ -33,6 +33,12 @@ Never push to `main`. Branch, push, open a PR; it gets squash-merged on GitHub.
 
 Changes under `.github/` need a review from @AsarMichil specifically (see `.github/CODEOWNERS`).
 
+## Feature flags
+
+Defined in `src/lib/flags.svelte.ts`. Set for a build with `PUBLIC_FLAGS=name` (a
+Vercel environment variable; prefix `-name` to force off), or per-browser from the
+console with `flags.enable('name')`. The console wins. `explore` is currently off.
+
 ## Commands
 
 ```
