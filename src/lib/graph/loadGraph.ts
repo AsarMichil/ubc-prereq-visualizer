@@ -22,7 +22,9 @@ type NodeTuple = [
 	number, // flags
 	number, // relatedness-layout x
 	number, // relatedness-layout y
-	number // community id, -1 when the course has no prerequisite links
+	number, // community id, -1 when the course has no prerequisite links
+	number, // force-layout x
+	number // force-layout y
 ];
 type EdgeTuple = [number, number, 0 | 1, string | null];
 
@@ -40,6 +42,10 @@ export interface GraphPayload {
 		y: number;
 		size: number;
 		radius: number;
+		/** The same community's centre and extent in the force layout. */
+		forceX: number;
+		forceY: number;
+		forceRadius: number;
 	}[];
 	nodes: NodeTuple[];
 	edges: EdgeTuple[];
@@ -77,6 +83,8 @@ export interface CourseAttributes {
 	baseY: number;
 	clusterX: number;
 	clusterY: number;
+	forceX: number;
+	forceY: number;
 	/** Community in the relatedness layout, or -1 for a course with no links. */
 	community: number;
 	size: number;
@@ -128,7 +136,9 @@ export async function loadMap(fetcher: typeof fetch = fetch): Promise<LoadedMap>
 			flags,
 			cx,
 			cy,
-			community
+			community,
+			fx,
+			fy
 		] = tuple;
 		const subject = payload.subjects[subjectIndex] ?? '';
 		const facultyIndex = payload.subjectFaculty[subjectIndex] ?? -1;
@@ -151,6 +161,8 @@ export async function loadMap(fetcher: typeof fetch = fetch): Promise<LoadedMap>
 			baseY: -y,
 			clusterX: cx,
 			clusterY: -cy,
+			forceX: fx,
+			forceY: -fy,
 			community,
 			size: 1,
 			color: '#888888',

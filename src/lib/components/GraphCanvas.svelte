@@ -210,7 +210,9 @@
 			targets[code] =
 				layout === 'related'
 					? { x: data.clusterX, y: data.clusterY }
-					: { x: data.baseX, y: data.baseY };
+					: layout === 'force'
+						? { x: data.forceX, y: data.forceY }
+						: { x: data.baseX, y: data.baseY };
 		});
 
 		const instance = renderer;

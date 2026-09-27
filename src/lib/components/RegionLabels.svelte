@@ -38,7 +38,10 @@
 		if (tier === 'far') {
 			// In the relatedness layout the regions are communities, named after the
 			// subjects that dominate them; in the faculty layout they are faculties.
-			if (explorer.layout === 'related') {
+			if (explorer.layout === 'related' || explorer.layout === 'force') {
+				// Same communities either way, but they sit somewhere different in each
+				// layout, so read the centre that belongs to the one on screen.
+				const force = explorer.layout === 'force';
 				// Only the substantial clusters get a name, and it sits above the
 				// cluster rather than over it: centred labels are wider than the gaps
 				// between clusters, so they overlapped their neighbours.
@@ -46,12 +49,17 @@
 					.filter((community) => community.size >= 60)
 					.sort((a, b) => b.size - a.size)
 					.slice(0, 16)
-					.map((community) => ({
-						key: `c${community.id}`,
-						label: community.label,
-						...project({ x: community.x, y: -community.y - community.radius * 1.12 }),
-						emphasis: true
-					}));
+					.map((community) => {
+						const x = force ? community.forceX : community.x;
+						const y = force ? community.forceY : community.y;
+						const radius = force ? community.forceRadius : community.radius;
+						return {
+							key: `c${community.id}`,
+							label: community.label,
+							...project({ x, y: -y - radius * 1.12 }),
+							emphasis: true
+						};
+					});
 			}
 
 			return map.payload.facultyBoxes.map((box) => ({
@@ -64,7 +72,7 @@
 
 		// Mid zoom: name the subjects. Only meaningful in the faculty layout, where
 		// a subject occupies one contiguous block.
-		if (explorer.layout === 'related') return [];
+		if (explorer.layout !== 'faculty') return [];
 
 		return map.subjects
 			.filter((subject) => subject.courses >= 6)
