@@ -5,8 +5,10 @@
 
 An explorable map of course prerequisites at UBC Vancouver — 9,489 courses, 8,284 links.
 
-- **Explore** draws the whole map at once, filtered by year, faculty or subject.
 - **Build a path** draws only what you pick, growing outward from a course toward what it requires or unlocks.
+- **Explore** draws the whole map at once, filtered by year, faculty or subject. Behind a
+  flag while it is still rough — `PUBLIC_FLAGS=explore` to ship it, or `flags.enable('explore')`
+  in the browser console to see it in a deployed build.
 
 ## Data
 
