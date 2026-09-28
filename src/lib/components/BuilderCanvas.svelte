@@ -57,6 +57,7 @@
 
 	onMount(() => {
 		let disposed = false;
+		let observer: ResizeObserver | undefined;
 
 		(async () => {
 			const { default: SigmaClass } = await import('sigma');
@@ -82,6 +83,12 @@
 
 			renderer.on('clickNode', ({ node }) => void builder.expand(node, 'back'));
 
+			// Sigma only re-measures its container on a window resize or a render,
+			// so the side panel opening would leave the canvases at their old width,
+			// overhanging the panel and swallowing its clicks until something redrew.
+			observer = new ResizeObserver(() => renderer?.scheduleRefresh());
+			observer.observe(container);
+
 			// Handy for debugging camera and hit-testing from the console.
 			if (import.meta.env.DEV) {
 				(window as unknown as { __builderSigma?: unknown }).__builderSigma = renderer;
@@ -92,6 +99,7 @@
 
 		return () => {
 			disposed = true;
+			observer?.disconnect();
 			cancelAnimation?.();
 			cancelAnimation = null;
 			renderer?.kill();
@@ -258,7 +266,7 @@
 	});
 </script>
 
-<div class="relative h-full w-full">
+<div class="relative h-full w-full overflow-hidden">
 	<div bind:this={container} class="h-full w-full"></div>
 
 	{#if builder.codes.length <= 1}
