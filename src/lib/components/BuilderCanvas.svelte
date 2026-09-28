@@ -17,7 +17,12 @@
 	import { createNodeBorderProgram } from '@sigma/node-border';
 	import { getBuilder, getExplorer } from '$lib/state/context';
 	import { EDGE_COLOR, GHOST_COLOR, INCOMPLETE, INK, SURFACE, yearColor } from '$lib/graph/palette';
-	import { createEdgeDashedArrowProgram } from '$lib/graph/dashedEdge';
+	import {
+		createEdgeCurvedArrowProgram,
+		createEdgeDashedArrowProgram,
+		createEdgeDashedCurvedArrowProgram
+	} from '$lib/graph/dashedEdge';
+	import { curvatureAround } from '$lib/graph/edgeRouting';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
 	import { tieredLayout } from '$lib/graph/layered';
 
@@ -69,7 +74,11 @@
 				defaultNodeType: 'bordered',
 				nodeProgramClasses: { bordered: BorderedNode },
 				defaultEdgeType: 'arrow',
-				edgeProgramClasses: { dashedArrow: createEdgeDashedArrowProgram<BuilderNode>() },
+				edgeProgramClasses: {
+					dashedArrow: createEdgeDashedArrowProgram<BuilderNode>(),
+					curvedArrow: createEdgeCurvedArrowProgram<BuilderNode>(),
+					dashedCurvedArrow: createEdgeDashedCurvedArrowProgram<BuilderNode>()
+				},
 				renderEdgeLabels: false,
 				labelFont: 'ui-monospace, SFMono-Regular, Menlo, monospace',
 				labelSize: 13,
@@ -202,20 +211,6 @@
 			});
 		}
 
-		graph.clearEdges();
-		for (const link of links) {
-			if (graph.hasNode(link.from) && graph.hasNode(link.to)) {
-				// A prerequisite the course could do without - the second of two
-				// alternatives - is drawn dashed, so the tree shows what is actually
-				// carrying each requirement.
-				graph.addDirectedEdge(link.from, link.to, {
-					type: surplus.has(`${link.from}>${link.to}`) ? 'dashedArrow' : 'arrow',
-					color: EDGE_COLOR[currentTheme],
-					size: 4
-				});
-			}
-		}
-
 		const layout = tieredLayout(
 			nodes.map((node) => ({ id: node.code, tier: node.tier })),
 			links.map((link) => ({ source: link.from, target: link.to })),
@@ -226,6 +221,46 @@
 
 		const targets: Record<string, { x: number; y: number }> = {};
 		for (const [code, point] of layout.positions) targets[code] = point;
+
+		graph.clearEdges();
+		for (const link of links) {
+			if (!graph.hasNode(link.from) || !graph.hasNode(link.to)) continue;
+			// A prerequisite the course could do without - the second of two
+			// alternatives - is drawn dashed, so the tree shows what is actually
+			// carrying each requirement.
+			const dashed = surplus.has(`${link.from}>${link.to}`);
+			// Rows are hop distance, so an edge can run along a row or skip one,
+			// straight through an unrelated course. Such an edge takes the gentlest
+			// arc that clears it; every other edge stays straight. Judged against
+			// where nodes are headed, not where the animation has them now.
+			const from = targets[link.from];
+			const to = targets[link.to];
+			const curvature =
+				from && to
+					? curvatureAround(
+							from,
+							to,
+							Object.entries(targets)
+								.filter(([code]) => code !== link.from && code !== link.to)
+								.map(([, point]) => point),
+							// In layout units: roughly a node's radius plus a margin, and
+							// the width of a course code set in the label font.
+							{ clearance: 25, labelWidth: 85 }
+						)
+					: 0;
+			graph.addDirectedEdge(link.from, link.to, {
+				type: curvature
+					? dashed
+						? 'dashedCurvedArrow'
+						: 'curvedArrow'
+					: dashed
+						? 'dashedArrow'
+						: 'arrow',
+				curvature,
+				color: EDGE_COLOR[currentTheme],
+				size: 4
+			});
+		}
 
 		// Cancel any animation still running. Adding a course changes the drawn set
 		// and then the edges, so this effect fires twice in quick succession; two

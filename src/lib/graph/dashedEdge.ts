@@ -15,11 +15,13 @@
  * landed on a dash or in a gap.
  */
 import type { Attributes } from 'graphology-types';
+import { createEdgeCurveProgram } from '@sigma/edge-curve';
 import {
 	createEdgeArrowHeadProgram,
 	createEdgeCompoundProgram,
 	EdgeProgram,
 	type EdgeProgramType,
+	type ProgramDefinition,
 	type ProgramInfo
 } from 'sigma/rendering';
 import type { EdgeDisplayData, NodeDisplayData, RenderParams } from 'sigma/types';
@@ -244,4 +246,139 @@ export function createEdgeDashedArrowProgram<
 		EdgeDashedLineProgram<N, E, G>,
 		createEdgeArrowHeadProgram<N, E, G>({ lengthToThicknessRatio: LENGTH_TO_THICKNESS_RATIO })
 	]);
+}
+
+/**
+ * The fragment shader of `@sigma/edge-curve`'s curved arrow, with dashes.
+ *
+ * The package draws each curve as one quad and, per pixel, finds the nearest
+ * point on the quadratic Bezier to decide whether the pixel is on the line.
+ * Finding that point already yields its parameter `t` - how far along the curve
+ * it is - which the package throws away. Keeping it is all dashing needs.
+ *
+ * `t` is not quite arc length (a quadratic Bezier moves slightly faster near its
+ * ends), so `(1 - t)` times the curve's length is an approximation. At the
+ * gentle curvatures the builder uses it is within a few percent, which dash
+ * spacing does not show. Unlike the straight program this works in pixels,
+ * since that is what the package's varyings are in; `v_thickness` is the full
+ * width here, so the dash constants still mean "multiples of the width".
+ *
+ * Only the fragment shader is replaced - the vertex shader, attributes and
+ * curve maths are the package's own, so its curves and ours match exactly.
+ */
+const CURVED_FRAGMENT_SHADER = /* glsl */ `
+precision highp float;
+
+varying vec4 v_color;
+varying float v_thickness;
+varying float v_feather;
+varying vec2 v_cpA;
+varying vec2 v_cpB;
+varying vec2 v_cpC;
+varying float v_targetSize;
+varying vec2 v_targetPoint;
+
+uniform float u_lengthToThicknessRatio;
+uniform float u_widenessToThicknessRatio;
+
+const vec4 transparent = vec4(0.0, 0.0, 0.0, 0.0);
+const float dash = ${DASH.toFixed(2)};
+const float period = ${(DASH + GAP).toFixed(2)};
+const float soft = 0.15;
+
+float det(vec2 a, vec2 b) {
+  return a.x * b.y - b.x * a.y;
+}
+
+// The package's closest-point solve, stopping at the parameter. The control
+// points are relative to the fragment, so the curve point at t is its offset.
+float closestT(vec2 b0, vec2 b1, vec2 b2) {
+  float a = det(b0, b2), b = 2.0 * det(b1, b0), d = 2.0 * det(b2, b1);
+  float f = b * d - a * a;
+  vec2 d21 = b2 - b1, d10 = b1 - b0, d20 = b2 - b0;
+  vec2 gf = 2.0 * (b * d21 + d * d10 + a * d20);
+  gf = vec2(gf.y, -gf.x);
+  vec2 pp = -f * gf / dot(gf, gf);
+  vec2 d0p = b0 - pp;
+  float ap = det(d0p, d20), bp = 2.0 * det(d10, d0p);
+  return clamp((ap + bp) / (2.0 * a + b + d), 0.0, 1.0);
+}
+
+void main(void) {
+  vec2 p = gl_FragCoord.xy;
+  vec2 b0 = v_cpA - p, b1 = v_cpB - p, b2 = v_cpC - p;
+  float t = closestT(b0, b1, b2);
+  float dist = length(mix(mix(b0, b1, t), mix(b1, b2, t), t));
+
+  float thickness = v_thickness;
+  float distToTarget = length(p - v_targetPoint);
+  float targetArrowLength = v_targetSize + thickness * u_lengthToThicknessRatio;
+  bool inHead = distToTarget < targetArrowLength;
+  if (inHead) {
+    thickness = (distToTarget - v_targetSize) / (targetArrowLength - v_targetSize) * u_widenessToThicknessRatio * thickness;
+  }
+
+  float halfThickness = thickness / 2.0;
+  if (dist >= halfThickness) {
+    gl_FragColor = transparent;
+    return;
+  }
+
+  #ifdef PICKING_MODE
+  gl_FragColor = v_color;
+  #else
+  float side = smoothstep(halfThickness - v_feather, halfThickness, dist);
+
+  // Dashes count back from the base of the arrow head, which stays solid.
+  float gap = 0.0;
+  if (!inHead) {
+    float chord = length(v_cpC - v_cpA);
+    float polygon = length(v_cpB - v_cpA) + length(v_cpC - v_cpB);
+    // Close estimate of a quadratic Bezier's length from its chord and hull.
+    float curveLength = (2.0 * chord + polygon) / 3.0;
+    float along = ((1.0 - t) * curveLength - targetArrowLength) / v_thickness;
+    float phase = mod(along, period);
+    gap = smoothstep(dash - soft, dash, phase) * (1.0 - smoothstep(period - soft, period, phase));
+  }
+
+  gl_FragColor = mix(v_color, transparent, max(side, gap));
+  #endif
+}
+`;
+
+/** Matches the package's own curved arrow, and the straight arrow's head. */
+const CURVED_ARROW_HEAD = {
+	extremity: 'target' as const,
+	lengthToThicknessRatio: LENGTH_TO_THICKNESS_RATIO,
+	widenessToThicknessRatio: 2
+};
+
+/** `@sigma/edge-curve`'s curved arrow, typed for the renderer's node attributes. */
+export function createEdgeCurvedArrowProgram<
+	N extends Attributes = Attributes,
+	E extends Attributes = Attributes,
+	G extends Attributes = Attributes
+>(): EdgeProgramType<N, E, G> {
+	return createEdgeCurveProgram<N, E, G>({ arrowHead: CURVED_ARROW_HEAD });
+}
+
+/** The same curved arrow, dashed. See `CURVED_FRAGMENT_SHADER`. */
+export function createEdgeDashedCurvedArrowProgram<
+	N extends Attributes = Attributes,
+	E extends Attributes = Attributes,
+	G extends Attributes = Attributes
+>(): EdgeProgramType<N, E, G> {
+	// The package's declared type hides `getDefinition`, which is all we override.
+	const Curved = createEdgeCurveProgram<N, E, G>({
+		arrowHead: CURVED_ARROW_HEAD
+	}) as unknown as new (...args: ConstructorParameters<EdgeProgramType<N, E, G>>) => {
+		getDefinition(): ProgramDefinition;
+	};
+
+	class EdgeDashedCurvedArrowProgram extends Curved {
+		getDefinition() {
+			return { ...super.getDefinition(), FRAGMENT_SHADER_SOURCE: CURVED_FRAGMENT_SHADER };
+		}
+	}
+	return EdgeDashedCurvedArrowProgram as unknown as EdgeProgramType<N, E, G>;
 }
