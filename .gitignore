@@ -21,3 +21,6 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Agent skills, materialised from skills-lock.json by `bunx skills add`
+/.agents/

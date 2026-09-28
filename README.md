@@ -25,6 +25,11 @@ bun run scrape      # re-snapshot the calendar (~5 min, hits UBC's API)
 bun run build:data  # re-parse into static/data, and report parser coverage
 ```
 
+Optionally, `bunx skills add supabase/agent-skills` materialises the Supabase and
+Postgres guidance pinned in `skills-lock.json` into `.agents/`, which is gitignored.
+Worth having before touching `supabase/` — it is what caught the view that bypassed
+RLS and the missing column grant when that schema was written.
+
 ## Analytics
 
 `supabase/schema.sql` is the events table; `supabase/reports.sql` holds the queries
