@@ -155,6 +155,12 @@ class EdgeDashedLineProgram<
 	E extends Attributes = Attributes,
 	G extends Attributes = Attributes
 > extends EdgeProgram<(typeof UNIFORMS)[number], N, E, G> {
+	/**
+	 * Whether the line stops short for a target node and an arrow head. Off for
+	 * the inner segments of a routed edge, which end at an invisible bend point.
+	 */
+	protected clamped = true;
+
 	getDefinition() {
 		return {
 			VERTICES: 6,
@@ -216,7 +222,8 @@ class EdgeDashedLineProgram<
 		array[startIndex++] = n2;
 		array[startIndex++] = floatColor(data.color);
 		array[startIndex++] = edgeIndex;
-		array[startIndex] = targetData.size || 1;
+		// A zero radius cancels both the node and arrow-head allowance in the shader.
+		array[startIndex] = this.clamped ? targetData.size || 1 : 0;
 	}
 
 	setUniforms(params: RenderParams, { gl, uniformLocations }: ProgramInfo): void {
@@ -227,8 +234,29 @@ class EdgeDashedLineProgram<
 		gl.uniform1f(uniformLocations.u_pixelRatio, params.pixelRatio);
 		gl.uniform1f(uniformLocations.u_feather, params.antiAliasingFeather);
 		gl.uniform1f(uniformLocations.u_minEdgeThickness, params.minEdgeThickness);
-		gl.uniform1f(uniformLocations.u_lengthToThicknessRatio, LENGTH_TO_THICKNESS_RATIO);
+		gl.uniform1f(
+			uniformLocations.u_lengthToThicknessRatio,
+			this.clamped ? LENGTH_TO_THICKNESS_RATIO : 0
+		);
 	}
+}
+
+/** A dashed segment that runs its full length, for the inside of a routed edge. */
+class EdgeDashedSegmentProgram<
+	N extends Attributes = Attributes,
+	E extends Attributes = Attributes,
+	G extends Attributes = Attributes
+> extends EdgeDashedLineProgram<N, E, G> {
+	protected clamped = false;
+}
+
+/** The unclamped dashed segment, typed for the renderer's node attributes. */
+export function createEdgeDashedSegmentProgram<
+	N extends Attributes = Attributes,
+	E extends Attributes = Attributes,
+	G extends Attributes = Attributes
+>(): EdgeProgramType<N, E, G> {
+	return EdgeDashedSegmentProgram<N, E, G>;
 }
 
 /**
