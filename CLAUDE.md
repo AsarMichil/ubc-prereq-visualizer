@@ -64,8 +64,8 @@ bun run build:data   re-parse and rebuild static/data (~1 min: runs the force la
   It is a create-from-scratch script describing the current state, not a migration:
   re-running it on a live database fails on the first `create table`. To change the
   schema, write the specific `alter`, run that, then edit `schema.sql` to match.
-- Adding an analytics event means four places, and missing one fails in a different
+- Adding an analytics event means three places, and missing one fails in a different
   way each time: the `name` CHECK constraint in `supabase/schema.sql` (the insert is
-  rejected), `EventName` in `src/lib/analytics.ts` (it won't typecheck), the table in
-  `src/routes/privacy/+page.svelte` (the page silently understates what is collected),
-  and usually `supabase/reports.sql`.
+  rejected at runtime, silently, because sends are fire-and-forget), `EventName` in
+  `src/lib/analytics.ts` (it won't typecheck — the one that catches itself), and
+  usually `supabase/reports.sql` (collected but never surfaces).

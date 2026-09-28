@@ -34,8 +34,8 @@ RLS and the missing column grant when that schema was written.
 
 `supabase/schema.sql` is the events table; `supabase/reports.sql` holds the queries
 behind the Supabase Studio dashboard. Anonymous and cookieless — two random ids, eight
-event names fixed by a CHECK constraint, and nothing about who anyone is. `/privacy`
-lists the lot, and has to be kept in step with `src/lib/analytics.ts`.
+event names fixed by a CHECK constraint, and nothing about who anyone is. `/about`
+states what is not collected; the CHECK constraint is the exhaustive list.
 
 Nothing is sent unless `PUBLIC_SUPABASE_URL` and `PUBLIC_SUPABASE_PUBLISHABLE_KEY` are both
 set, so dev and CI are inert by default. Set them in Vercel's production environment
