@@ -29,6 +29,7 @@ import {
 	displayGroups,
 	groupSatisfied,
 	requirementGroups,
+	surplusPrerequisites,
 	type RequirementGroup
 } from '../graph/requirementGroups';
 
@@ -172,6 +173,30 @@ export class PathBuilderState {
 		}
 
 		return flagged;
+	});
+
+	/**
+	 * Edges to prerequisites a course does not need, keyed `from>to`.
+	 *
+	 * With "one of B or C" and both drawn, the one drawn later is extra and its
+	 * edge is drawn dashed. Derived like `unmet`, so removing B hands the row
+	 * back to C without anything having to remember that it was demoted.
+	 */
+	surplus = $derived.by(() => {
+		void this.detailsVersion;
+		const keys = new Set<string>();
+
+		for (const code of this.codes) {
+			const detail = peekCourse(code);
+			if (!detail?.prerequisite) continue;
+
+			const groups = requirementGroups(detail.prerequisite);
+			for (const extra of surplusPrerequisites(groups, this.codes, this.creditsOf)) {
+				keys.add(`${extra}>${code}`);
+			}
+		}
+
+		return keys;
 	});
 
 	/** Loads detail for every drawn course so `unmet` can be evaluated. */

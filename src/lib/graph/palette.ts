@@ -26,12 +26,23 @@ export type Theme = 'light' | 'dark';
 /** 1xx, 2xx, 3xx, 4xx, graduate. */
 export const YEAR_TIERS = ['1st year', '2nd year', '3rd year', '4th year', 'Graduate'] as const;
 
-/** Blue ramp. Low tiers recede toward the surface in both modes. */
+/**
+ * Blue ramp. Low tiers recede toward the surface in both modes.
+ *
+ * Built directly in OKLCH rather than picked from a step scale: lightness is
+ * spaced evenly between the palest step that still clears 2:1 on the surface
+ * and a deep end past the old step 700, and hue turns 35 degrees from sky to
+ * indigo along the way so neighbours differ in tint as well as lightness. The
+ * old step-scale ramp bunched its middle three steps at the minimum visible gap;
+ * this one's tightest neighbours are ~30% further apart (OKLCH delta L 0.095 ->
+ * 0.121). Both modes pass the ordinal checks - one hue family (spread under 40
+ * degrees), monotone lightness, light end clearing the surface.
+ */
 const YEAR_COLORS: Record<Theme, string[]> = {
-	// steps 250, 400, 500, 600, 700
-	light: ['#86b6ef', '#3987e5', '#256abf', '#184f95', '#0d366b'],
-	// steps 600, 450, 350, 200, 100
-	dark: ['#184f95', '#2a78d6', '#5598e7', '#9ec5f4', '#cde2fb']
+	// L 0.76 -> 0.27, h 240 -> 275
+	light: ['#53bbfe', '#038fef', '#0162cf', '#1630ae', '#1a0175'],
+	// L 0.45 -> 0.95, h 275 -> 240
+	dark: ['#3c3cc0', '#416cec', '#5b9efe', '#98cbfe', '#e0f1ff']
 };
 
 /**

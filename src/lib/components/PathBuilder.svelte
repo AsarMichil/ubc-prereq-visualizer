@@ -12,7 +12,7 @@
 	import { displayGroups, groupSatisfied } from '$lib/graph/requirementGroups';
 	import BuilderCanvas from './BuilderCanvas.svelte';
 	import RequirementRows from './RequirementRows.svelte';
-	import { hopSwatches } from '$lib/graph/palette';
+	import { EDGE_COLOR, INCOMPLETE, yearSwatches } from '$lib/graph/palette';
 
 	const builder = getBuilder();
 	const explorer = getExplorer();
@@ -22,7 +22,7 @@
 	let forwardFilter = $state('');
 
 	const theme = $derived(explorer.theme);
-	const swatches = $derived(hopSwatches(theme));
+	const swatches = $derived(yearSwatches(theme));
 
 	const expandingNode = $derived(builder.expanding);
 
@@ -223,7 +223,10 @@
 	{/if}
 </div>
 
-<!-- Legend: colour means hop distance here, not year level. -->
+<!--
+	Legend: colour is year level, as on the map. The line and ring keys are here
+	because neither is guessable - a dashed edge could as easily mean "optional".
+-->
 {#if !builder.isEmpty}
 	<div
 		class="pointer-events-none absolute bottom-3 left-6 flex gap-3 rounded border border-[var(--line)] bg-[var(--surface)]/90 px-3 py-1.5 text-[11px]"
@@ -234,5 +237,23 @@
 				{swatch.label}
 			</span>
 		{/each}
+		<span class="flex items-center gap-1.5 border-l border-[var(--line)] pl-3">
+			<svg width="18" height="4" aria-hidden="true">
+				<line
+					x1="0"
+					y1="2"
+					x2="18"
+					y2="2"
+					stroke={EDGE_COLOR[theme]}
+					stroke-width="2.5"
+					stroke-dasharray="5 4"
+				/>
+			</svg>
+			Extra option
+		</span>
+		<span class="flex items-center gap-1.5">
+			<span class="h-2.5 w-2.5 rounded-full border-2" style:border-color={INCOMPLETE[theme]}></span>
+			Needs more
+		</span>
 	</div>
 {/if}

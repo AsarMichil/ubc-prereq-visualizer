@@ -412,3 +412,74 @@ export function displayGroups(
 		};
 	});
 }
+
+/**
+ * Drawn prerequisites a course does not need, given everything else drawn.
+ *
+ * "One of B or C" with both drawn is met by either, so one of them is extra.
+ * Which one is decided by `order` - the sequence courses were drawn in - so the
+ * course you added first keeps carrying the row, and the extra one becomes load-
+ * bearing again the moment the first is removed. Nothing here is stored; it is
+ * recomputed from the drawn set like `unmet`.
+ *
+ * A row that is still unmet has nothing extra: every drawn course in it is
+ * progress toward it. Credit quotas count every matching course, since which
+ * credits are "the" credits is not a question a student would ask.
+ */
+export function surplusPrerequisites(
+	groups: RequirementGroup[],
+	order: readonly string[],
+	creditsOf?: CreditsOf
+): Set<CourseCode> {
+	const drawn = new Set(order);
+	const rank = (code: CourseCode): number => {
+		const index = order.indexOf(code);
+		return index === -1 ? Infinity : index;
+	};
+
+	const mentioned = new Set<CourseCode>();
+	const used = new Set<CourseCode>();
+
+	/** Drawn courses an option contributes, whether or not it is complete. */
+	const contributes = (option: OptionNode): CourseCode[] =>
+		optionCourses(option).filter((code) => drawn.has(code));
+
+	const optionMet = (option: OptionNode): boolean => {
+		if (option.kind === 'course') return drawn.has(option.code);
+		if (option.kind === 'compound') return groupSatisfied(option.group, drawn, creditsOf);
+		if (option.kind === 'credits') {
+			return (
+				creditsOf !== undefined && creditsToward(option, drawn, creditsOf).total >= option.count
+			);
+		}
+		return false;
+	};
+
+	/** Marks what an option needs; a compound decides for itself what that is. */
+	const useOption = (option: OptionNode): void => {
+		if (option.kind === 'compound') useGroup(option.group);
+		else if (option.kind === 'credits' && creditsOf) {
+			for (const code of creditsToward(option, drawn, creditsOf).courses) used.add(code);
+		} else for (const code of contributes(option)) used.add(code);
+	};
+
+	const useGroup = (group: RequirementGroup): void => {
+		for (const option of group.options) for (const code of contributes(option)) mentioned.add(code);
+
+		if (group.kind === 'required' || !groupSatisfied(group, drawn, creditsOf)) {
+			group.options.forEach(useOption);
+			return;
+		}
+
+		// Met: the earliest-drawn options that meet it carry it; the rest are extra.
+		const carrying = group.options
+			.filter(optionMet)
+			.map((option) => ({ option, first: Math.min(...contributes(option).map(rank)) }))
+			.sort((a, b) => a.first - b.first)
+			.slice(0, group.n);
+		for (const { option } of carrying) useOption(option);
+	};
+
+	groups.forEach(useGroup);
+	return new Set([...mentioned].filter((code) => !used.has(code)));
+}
