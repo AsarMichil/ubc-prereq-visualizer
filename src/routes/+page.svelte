@@ -186,7 +186,7 @@
 					>{visibleCount.toLocaleString()} / {nodeCount.toLocaleString()}</span
 				>
 			{/if}
-			<a href={resolve('/privacy')} class="text-[var(--ink-muted)] hover:underline">Privacy</a>
+			<a href={resolve('/about')} class="text-[var(--ink-muted)] hover:underline">About</a>
 		</div>
 	</header>
 

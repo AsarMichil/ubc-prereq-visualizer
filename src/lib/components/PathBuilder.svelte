@@ -6,6 +6,7 @@
 	 * handle alike. Per-node controls live in this panel rather than on the marks,
 	 * which is what lets the view stay a real graph instead of a list of chips.
 	 */
+	import { resolve } from '$app/paths';
 	import type { Direction } from '$lib/state/pathBuilder.svelte';
 	import { getBuilder, getExplorer } from '$lib/state/context';
 	import { displayGroups, groupSatisfied } from '$lib/graph/requirementGroups';
@@ -86,6 +87,15 @@
 					<p class="mt-2 text-sm text-[var(--ink-secondary)]">
 						Search for a course above, then expand it toward what it requires or what it unlocks.
 						Only what you pick gets drawn.
+					</p>
+					<!--
+						The one place every user passes through, so the caveat goes here rather
+						than only behind a link nobody clicks. Kept to one line; the reasoning
+						is on /about.
+					-->
+					<p class="mt-6 text-xs text-[var(--ink-muted)]">
+						Not affiliated with UBC, and not guaranteed accurate — check the Calendar before you
+						register. <a href={resolve('/about')} class="underline underline-offset-2">More</a>
 					</p>
 				</div>
 			</div>

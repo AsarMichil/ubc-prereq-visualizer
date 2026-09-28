@@ -29,7 +29,7 @@ bun run build:data  # re-parse into static/data, and report parser coverage
 
 `supabase/schema.sql` is the events table; `supabase/reports.sql` holds the queries
 behind the Supabase Studio dashboard. Anonymous and cookieless — two random ids, eight
-event names fixed by a CHECK constraint, and nothing about who anyone is. `/privacy`
+event names fixed by a CHECK constraint, and nothing about who anyone is. `/about`
 states what is not collected; the CHECK constraint is the exhaustive list.
 
 Nothing is sent unless `PUBLIC_SUPABASE_URL` and `PUBLIC_SUPABASE_PUBLISHABLE_KEY` are both
