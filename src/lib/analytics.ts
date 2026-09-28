@@ -13,7 +13,8 @@
  * What is collected is two random ids and the eight events below. No cookies,
  * no IP, no accounts, and never the text someone typed into the search box -
  * only the course code they picked, which is public calendar data. `/privacy`
- * says the same thing in prose, and the two have to stay in step.
+ * covers what is not collected; the exhaustive list is the CHECK constraint in
+ * supabase/schema.sql rather than anything user-facing.
  */
 import { browser } from '$app/environment';
 // A namespace import, not a named one: these are unset locally and in CI, and

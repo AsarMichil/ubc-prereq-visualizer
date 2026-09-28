@@ -2,38 +2,11 @@
 	/**
 	 * What the app records, in plain terms.
 	 *
-	 * This page and `src/lib/analytics.ts` have to stay in step - if an event is
-	 * added there, the table below says so. The event names are the same strings
-	 * the database accepts, so there is nothing collected that is not listed.
+	 * Deliberately short: what is *not* collected is the part a student actually
+	 * needs, and `supabase/schema.sql` is the exhaustive list for anyone who
+	 * wants one.
 	 */
 	import { resolve } from '$app/paths';
-
-	const events: { name: string; when: string; carries: string }[] = [
-		{ name: 'session_start', when: 'the page opens', carries: 'referring site, rough window size' },
-		{
-			name: 'session_end',
-			when: 'the page closes',
-			carries: 'seconds spent, size of the path built'
-		},
-		{ name: 'search_select', when: 'you pick a course from search', carries: 'the course code' },
-		{
-			name: 'course_added',
-			when: 'a course joins the path',
-			carries: 'the course code, direction, how many'
-		},
-		{
-			name: 'expand',
-			when: 'a requirement list opens',
-			carries: 'the course code, how many options'
-		},
-		{ name: 'course_removed', when: 'a course leaves the path', carries: 'the course code' },
-		{ name: 'builder_cleared', when: 'you clear the path', carries: 'how many courses were in it' },
-		{
-			name: 'map_load_failed',
-			when: 'the course data fails to download',
-			carries: 'the error message'
-		}
-	];
 </script>
 
 <svelte:head>
@@ -67,7 +40,7 @@
 
 	<h2 class="mt-8 font-semibold">The two identifiers</h2>
 	<p class="mt-2 text-[var(--ink-secondary)]">
-		Two random numbers are generated in your browser and attached to the events below. Neither is
+		Two random numbers are generated in your browser and attached to what is recorded. Neither is
 		derived from anything about you or your device, and neither can be linked back to a person.
 	</p>
 	<ul class="mt-2 list-disc space-y-1 pl-5 text-[var(--ink-secondary)]">
@@ -78,45 +51,12 @@
 		</li>
 	</ul>
 
-	<h2 class="mt-8 font-semibold">What is recorded</h2>
-	<p class="mt-2 text-[var(--ink-secondary)]">
-		The complete list. The database will not accept anything else.
-	</p>
-	<div class="mt-3 overflow-x-auto">
-		<table class="w-full border-collapse text-xs">
-			<thead>
-				<tr class="border-b border-[var(--line)] text-left">
-					<th class="py-2 pr-4 font-medium">Event</th>
-					<th class="py-2 pr-4 font-medium">When</th>
-					<th class="py-2 font-medium">What it carries</th>
-				</tr>
-			</thead>
-			<tbody class="text-[var(--ink-secondary)]">
-				{#each events as event (event.name)}
-					<tr class="border-b border-[var(--line)]">
-						<td class="py-2 pr-4 font-mono whitespace-nowrap">{event.name}</td>
-						<td class="py-2 pr-4">{event.when}</td>
-						<td class="py-2">{event.carries}</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
-
-	<h2 class="mt-8 font-semibold">Where it goes</h2>
-	<p class="mt-2 text-[var(--ink-secondary)]">
-		Into a Postgres database hosted on Supabase, which only I can read. The table definition is in
-		the repository, under <code class="font-mono text-xs">supabase/</code>.
-	</p>
-
-	<h2 class="mt-8 font-semibold">Opting out</h2>
-	<p class="mt-2 text-[var(--ink-secondary)]">
-		Any content blocker that blocks third-party requests will stop it, and the app works exactly the
-		same when it fails — every event is sent and forgotten, and nothing waits on a reply. Blocking
-		requests to <code class="font-mono text-xs">supabase.co</code> is enough.
-	</p>
-
-	<p class="mt-8 text-xs text-[var(--ink-muted)]">
-		Questions, or want your data removed? Open an issue on the repository.
+	<!--
+		Who is behind it. A privacy page that says "nothing about who you are" should
+		be willing to say who is on the other end of that.
+	-->
+	<p class="mt-10 border-t border-[var(--line)] pt-6 text-xs text-[var(--ink-muted)]">
+		Built by Asar Zuluev —
+		<a href="https://asarmichil.com" class="hover:underline">asarmichil.com</a>
 	</p>
 </div>
