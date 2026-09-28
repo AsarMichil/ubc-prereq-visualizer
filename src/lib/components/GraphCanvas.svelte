@@ -40,6 +40,7 @@
 
 	onMount(() => {
 		let disposed = false;
+		let observer: ResizeObserver | undefined;
 
 		// Dynamic import: Sigma touches WebGL/window and must not run during SSR.
 		(async () => {
@@ -86,6 +87,12 @@
 				explorer.focus = null;
 			});
 
+			// Sigma only re-measures its container on a window resize or a render,
+			// so a side panel opening or closing would leave the canvases at their
+			// old width until something redrew.
+			observer = new ResizeObserver(() => renderer?.scheduleRefresh());
+			observer.observe(container);
+
 			// Sigma only normalizes node coordinates during its first refresh. Until
 			// that happens getNodeDisplayData returns raw graph coordinates, and
 			// feeding those to the camera sends it far outside the scene. Refresh
@@ -102,6 +109,7 @@
 
 		return () => {
 			disposed = true;
+			observer?.disconnect();
 			renderer?.kill();
 			renderer = undefined;
 		};
@@ -390,7 +398,7 @@
 	}
 </script>
 
-<div class="relative h-full w-full">
+<div class="relative h-full w-full overflow-hidden">
 	<div bind:this={container} class="h-full w-full"></div>
 
 	<RegionLabels {project} />
