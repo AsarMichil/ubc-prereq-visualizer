@@ -16,7 +16,8 @@
 	import { animateNodes } from 'sigma/utils';
 	import { createNodeBorderProgram } from '@sigma/node-border';
 	import { getBuilder, getExplorer } from '$lib/state/context';
-	import { EDGE_COLOR, hopColor, INCOMPLETE, INK, SURFACE } from '$lib/graph/palette';
+	import { EDGE_COLOR, GHOST_COLOR, INCOMPLETE, INK, SURFACE, yearColor } from '$lib/graph/palette';
+	import { createEdgeDashedArrowProgram } from '$lib/graph/dashedEdge';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
 	import { tieredLayout } from '$lib/graph/layered';
 
@@ -68,6 +69,7 @@
 				defaultNodeType: 'bordered',
 				nodeProgramClasses: { bordered: BorderedNode },
 				defaultEdgeType: 'arrow',
+				edgeProgramClasses: { dashedArrow: createEdgeDashedArrowProgram<BuilderNode>() },
 				renderEdgeLabels: false,
 				labelFont: 'ui-monospace, SFMono-Regular, Menlo, monospace',
 				labelSize: 13,
@@ -157,6 +159,8 @@
 	$effect(() => {
 		const nodes = builder.tiers;
 		const links = builder.edges;
+		const surplus = builder.surplus;
+		const courses = explorer.map?.graph;
 		const currentTheme = theme;
 		if (!ready || !renderer) return;
 
@@ -166,7 +170,13 @@
 		}
 
 		for (const node of nodes) {
-			const colour = hopColor(node.tier, currentTheme);
+			// Year level, as on the map: the rows already show distance, so colour
+			// is free to say something position does not.
+			const course = courses?.hasNode(node.code) ? courses.getNodeAttributes(node.code) : null;
+			const colour =
+				!course || course.ghost
+					? GHOST_COLOR[currentTheme]
+					: yearColor(course.number, currentTheme);
 			if (graph.hasNode(node.code)) {
 				graph.mergeNodeAttributes(node.code, { color: colour, tier: node.tier });
 				continue;
@@ -195,7 +205,11 @@
 		graph.clearEdges();
 		for (const link of links) {
 			if (graph.hasNode(link.from) && graph.hasNode(link.to)) {
+				// A prerequisite the course could do without - the second of two
+				// alternatives - is drawn dashed, so the tree shows what is actually
+				// carrying each requirement.
 				graph.addDirectedEdge(link.from, link.to, {
+					type: surplus.has(`${link.from}>${link.to}`) ? 'dashedArrow' : 'arrow',
 					color: EDGE_COLOR[currentTheme],
 					size: 4
 				});

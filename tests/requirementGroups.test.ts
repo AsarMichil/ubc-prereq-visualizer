@@ -5,6 +5,7 @@ import {
 	groupSatisfied,
 	requirementGroups,
 	displayGroups,
+	surplusPrerequisites,
 	type OptionNode
 } from '../src/lib/graph/requirementGroups.ts';
 
@@ -171,5 +172,42 @@ describe('displayGroups · preserving prose', () => {
 	it('still reports a row as unavailable when only bare codes remain', () => {
 		const [row] = displayGroups(groupsFor('MATH_O 100'), new Set());
 		expect(row.unavailable).toBe(true);
+	});
+});
+
+describe('surplusPrerequisites', () => {
+	const surplus = (clause: string, order: string[]) => [
+		...surplusPrerequisites(groupsFor(clause), order)
+	];
+
+	it('marks the later of two alternatives as extra', () => {
+		expect(surplus('One of CPSC 210, CPEN 221', ['CPSC 210', 'CPEN 221'])).toEqual(['CPEN 221']);
+		expect(surplus('One of CPSC 210, CPEN 221', ['CPEN 221', 'CPSC 210'])).toEqual(['CPSC 210']);
+	});
+
+	it('hands the row back once the first alternative is gone', () => {
+		expect(surplus('One of CPSC 210, CPEN 221', ['CPEN 221'])).toEqual([]);
+	});
+
+	it('never marks a required course as extra', () => {
+		expect(
+			surplus('BIOL 336 and one of BIOL 233, BIOL 234', ['BIOL 233', 'BIOL 336', 'BIOL 234'])
+		).toEqual(['BIOL 234']);
+	});
+
+	it('keeps as many as a quantified row needs', () => {
+		expect(
+			surplus('Two of MATH 200, MATH 221, MATH 256', ['MATH 256', 'MATH 200', 'MATH 221'])
+		).toEqual(['MATH 221']);
+	});
+
+	it('counts everything drawn toward a row that is still unmet', () => {
+		expect(surplus('Two of MATH 200, MATH 221, MATH 256', ['MATH 221'])).toEqual([]);
+	});
+
+	it('marks a half-drawn compound as extra when another option met the row', () => {
+		expect(
+			surplus('Either (a) CPSC 110 and CPSC 121 or (b) CPSC 107', ['CPSC 107', 'CPSC 110'])
+		).toEqual(['CPSC 110']);
 	});
 });
