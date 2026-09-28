@@ -25,6 +25,17 @@ bun run scrape      # re-snapshot the calendar (~5 min, hits UBC's API)
 bun run build:data  # re-parse into static/data, and report parser coverage
 ```
 
+## Analytics
+
+`supabase/schema.sql` is the events table; `supabase/reports.sql` holds the queries
+behind the Supabase Studio dashboard. Anonymous and cookieless — two random ids, eight
+event names fixed by a CHECK constraint, and nothing about who anyone is. `/privacy`
+lists the lot, and has to be kept in step with `src/lib/analytics.ts`.
+
+Nothing is sent unless `PUBLIC_SUPABASE_URL` and `PUBLIC_SUPABASE_PUBLISHABLE_KEY` are both
+set, so dev and CI are inert by default. Set them in Vercel's production environment
+only, and previews stay inert too.
+
 SvelteKit, Sigma.js/WebGL, Tailwind. The layout is baked at build time, so the browser
 never runs a layout algorithm.
 

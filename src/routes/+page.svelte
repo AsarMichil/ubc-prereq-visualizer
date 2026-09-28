@@ -14,9 +14,10 @@
 	import { loadMap } from '$lib/graph/loadGraph';
 	import { ExplorerState } from '$lib/state/explorer.svelte';
 	import { yearSwatches, type Theme } from '$lib/graph/palette';
+	import { startSession, track } from '$lib/analytics';
 
 	const explorer = new ExplorerState();
-	const builder = new PathBuilderState();
+	const builder = new PathBuilderState(track);
 
 	// Shared through context rather than threaded down as props.
 	setExplorer(explorer);
@@ -57,14 +58,26 @@
 		const onThemeChange = () => (explorer.theme = currentTheme());
 		media.addEventListener('change', onThemeChange);
 
+		// The builder lives here, so the session that reports what was built does
+		// too. No-op unless the Supabase keys are set - see $lib/analytics.
+		const endSession = startSession(() => builder.summary());
+
 		loadMap()
 			.then((map) => {
 				explorer.map = map;
 				builder.attach(map.graph);
 			})
-			.catch((cause) => (error = cause instanceof Error ? cause.message : String(cause)));
+			.catch((cause) => {
+				error = cause instanceof Error ? cause.message : String(cause);
+				// Worth watching in the first weeks: this is ~7MB over whatever
+				// connection a student happens to be on.
+				track('map_load_failed', { message: error });
+			});
 
-		return () => media.removeEventListener('change', onThemeChange);
+		return () => {
+			media.removeEventListener('change', onThemeChange);
+			endSession();
+		};
 	});
 
 	// Keep the URL in step with the view so any state is shareable.
@@ -85,6 +98,8 @@
 	 * something on screen joins that component, one that isn't starts its own.
 	 */
 	function selectCourse(code: string): void {
+		// The chosen code only - never what was typed to find it.
+		track('search_select', { code, mode: activeMode });
 		if (activeMode === 'build') builder.select(code);
 		else explorer.focus = code;
 	}
@@ -171,6 +186,7 @@
 					>{visibleCount.toLocaleString()} / {nodeCount.toLocaleString()}</span
 				>
 			{/if}
+			<a href={resolve('/privacy')} class="text-[var(--ink-muted)] hover:underline">Privacy</a>
 		</div>
 	</header>
 

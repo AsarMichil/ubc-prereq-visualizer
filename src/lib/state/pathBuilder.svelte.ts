@@ -22,6 +22,7 @@
  * appeared or two components merged.
  */
 import type Graph from 'graphology';
+import type { TrackFn } from '../analytics';
 import type { CourseAttributes, EdgeAttributes } from '../graph/loadGraph';
 import { getCourse, peekCourse, preloadSubjects, type CourseDetail } from '../data/courseDetail';
 import {
@@ -66,6 +67,21 @@ export class PathBuilderState {
 	private graph: Graph<CourseAttributes, EdgeAttributes> | null = null;
 	/** Bumped when course detail finishes loading, so `unmet` recomputes. */
 	private detailsVersion = $state(0);
+
+	/**
+	 * Where usage events go. Injected rather than imported so this class stays a
+	 * pure piece of state logic with no network in it - which is what lets
+	 * `tests/pathBuilder.test.ts` construct it with no setup at all.
+	 *
+	 * The emits live in here rather than in the components because these methods
+	 * are the only place that knows the direction, the count and the resulting
+	 * path size together.
+	 */
+	private track: TrackFn;
+
+	constructor(track: TrackFn = () => {}) {
+		this.track = track;
+	}
 
 	attach(graph: Graph<CourseAttributes, EdgeAttributes>): void {
 		this.graph = graph;
@@ -211,7 +227,13 @@ export class PathBuilderState {
 			this.roots = [...this.roots, code];
 		}
 		this.rebalance();
-		void this.expand(code, 'back');
+		this.track('course_added', {
+			code,
+			direction: 'root',
+			count: 1,
+			path_size: this.codes.length
+		});
+		void this.expand(code, 'back', 'auto');
 	}
 
 	/**
@@ -229,6 +251,7 @@ export class PathBuilderState {
 	}
 
 	clear(): void {
+		this.track('builder_cleared', { path_size: this.codes.length });
 		this.codes = [];
 		this.roots = [];
 		this.edges = [];
@@ -238,8 +261,21 @@ export class PathBuilderState {
 		this.detail = null;
 	}
 
-	/** Opens the candidate list for a course in one direction. */
-	async expand(code: string, direction: Direction): Promise<void> {
+	/**
+	 * Opens the candidate list for a course in one direction.
+	 *
+	 * `trigger` only exists to keep the numbers honest. Adding a root opens its
+	 * requirement list for you, so counting that the same as a deliberate expand
+	 * would make "expanded something" identical to "added something" in the
+	 * funnel - while still being the case we most want to see, since a list that
+	 * opens by itself and gets nothing taken from it is the clearest sign the
+	 * list did not answer the question.
+	 */
+	async expand(
+		code: string,
+		direction: Direction,
+		trigger: 'user' | 'auto' = 'user'
+	): Promise<void> {
 		this.expanding = { code, direction };
 		this.loading = true;
 		this.groups = [];
@@ -265,6 +301,13 @@ export class PathBuilderState {
 			} else {
 				this.forward = this.dependentsOf(code);
 			}
+
+			this.track('expand', {
+				code,
+				direction,
+				trigger,
+				candidates: direction === 'back' ? this.groups.length : this.forward.length
+			});
 		} finally {
 			this.loading = false;
 		}
@@ -311,6 +354,16 @@ export class PathBuilderState {
 
 		this.rebalance();
 		this.expanding = null;
+
+		// One event per hop, not per course: "took three prerequisites at once" and
+		// "took one, three times" are different behaviours and the count keeps them
+		// apart. `code` is the parent, so this joins to `expand` on the same key.
+		this.track('course_added', {
+			code: parent,
+			direction,
+			count: codes.length,
+			path_size: this.codes.length
+		});
 	}
 
 	/**
@@ -431,8 +484,24 @@ export class PathBuilderState {
 		this.edges = this.edges.filter((edge) => edge.from !== code && edge.to !== code);
 		this.roots = this.roots.filter((root) => root !== code);
 		this.rebalance();
+		this.track('course_removed', { code, path_size: this.codes.length });
 	}
 
 	/** Courses drawn so far, excluding roots: the plan you have built. */
 	chosen = $derived(this.codes.filter((code) => !this.roots.includes(code)).sort());
+
+	/**
+	 * What was built, for the event sent as the page closes. Plain counts - the
+	 * shape of the path, never which courses were in it.
+	 */
+	summary(): Record<string, number> {
+		const tiers = this.tiers.map((entry) => entry.tier);
+		return {
+			courses: this.codes.length,
+			edges: this.edges.length,
+			roots: this.roots.length,
+			// How far the path was actually grown, in hops end to end.
+			depth: tiers.length ? Math.max(...tiers) - Math.min(...tiers) : 0
+		};
+	}
 }
