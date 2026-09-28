@@ -17,12 +17,9 @@
 	import { createNodeBorderProgram } from '@sigma/node-border';
 	import { getBuilder, getExplorer } from '$lib/state/context';
 	import { EDGE_COLOR, GHOST_COLOR, INCOMPLETE, INK, SURFACE, yearColor } from '$lib/graph/palette';
-	import {
-		createEdgeDashedArrowProgram,
-		createEdgeDashedSegmentProgram
-	} from '$lib/graph/dashedEdge';
+	import { createEdgeDashedArrowProgram } from '$lib/graph/dashedEdge';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
-	import { pathLayout } from '$lib/graph/layered';
+	import { tieredLayout } from '$lib/graph/layered';
 
 	const builder = getBuilder();
 	const explorer = getExplorer();
@@ -72,10 +69,7 @@
 				defaultNodeType: 'bordered',
 				nodeProgramClasses: { bordered: BorderedNode },
 				defaultEdgeType: 'arrow',
-				edgeProgramClasses: {
-					dashedArrow: createEdgeDashedArrowProgram<BuilderNode>(),
-					dashedSegment: createEdgeDashedSegmentProgram<BuilderNode>()
-				},
+				edgeProgramClasses: { dashedArrow: createEdgeDashedArrowProgram<BuilderNode>() },
 				renderEdgeLabels: false,
 				labelFont: 'ui-monospace, SFMono-Regular, Menlo, monospace',
 				labelSize: 13,
@@ -161,12 +155,6 @@
 	 * New nodes are seeded at the position of the node they were expanded from, so
 	 * the tree visibly grows outward from where you clicked instead of appearing
 	 * somewhere unrelated.
-	 *
-	 * An edge that skips rows is drawn through bend points the layout reserves in
-	 * each row it crosses, so it never runs through a course. The bends are
-	 * zero-size, unlabelled nodes in this local graph - Sigma draws only straight
-	 * segments, and a node is what a segment can end at - and they animate with
-	 * everything else. Only the last segment carries the arrow head.
 	 */
 	$effect(() => {
 		const nodes = builder.tiers;
@@ -176,20 +164,7 @@
 		const currentTheme = theme;
 		if (!ready || !renderer) return;
 
-		const layout = pathLayout(
-			nodes.map((node) => node.code),
-			links.map((link) => ({ source: link.from, target: link.to })),
-			// Rows sit closer together than columns so the tree reads as tiers
-			// rather than as a scattering of points.
-			{ nodeWidth: 150, nodeHeight: 40, xGap: 130, yGap: 110 }
-		);
-		const routes = (link: { from: string; to: string }): string[] =>
-			(layout.bends.get(`${link.from}>${link.to}`) ?? []).map((bend) => bend.id);
-
-		const wanted = new Set([
-			...nodes.map((node) => node.code),
-			...[...layout.bends.values()].flat().map((bend) => bend.id)
-		]);
+		const wanted = new Set(nodes.map((node) => node.code));
 		for (const existing of graph.nodes()) {
 			if (!wanted.has(existing)) graph.dropNode(existing);
 		}
@@ -227,52 +202,30 @@
 			});
 		}
 
-		// Bends start evenly spaced along the edge's current straight line, so a
-		// newly routed edge bends out of where it was rather than from the origin.
-		for (const link of links) {
-			const bends = routes(link);
-			if (!bends.length || !graph.hasNode(link.from) || !graph.hasNode(link.to)) continue;
-			const from = graph.getNodeAttributes(link.from);
-			const to = graph.getNodeAttributes(link.to);
-			bends.forEach((id, index) => {
-				if (graph.hasNode(id)) return;
-				const t = (index + 1) / (bends.length + 1);
-				graph.addNode(id, {
-					label: '',
-					ringColor: 'rgba(0,0,0,0)',
-					ringSize: 0,
-					x: from.x + (to.x - from.x) * t,
-					y: from.y + (to.y - from.y) * t,
-					size: 0,
-					color: 'rgba(0,0,0,0)',
-					tier: 0
-				});
-			});
-		}
-
 		graph.clearEdges();
 		for (const link of links) {
-			if (!graph.hasNode(link.from) || !graph.hasNode(link.to)) continue;
-			// A prerequisite the course could do without - the second of two
-			// alternatives - is drawn dashed, so the tree shows what is actually
-			// carrying each requirement.
-			const dashed = surplus.has(`${link.from}>${link.to}`);
-			const path = [link.from, ...routes(link), link.to];
-			for (let index = 1; index < path.length; index++) {
-				const last = index === path.length - 1;
-				graph.addDirectedEdge(path[index - 1], path[index], {
-					type: last ? (dashed ? 'dashedArrow' : 'arrow') : dashed ? 'dashedSegment' : 'line',
+			if (graph.hasNode(link.from) && graph.hasNode(link.to)) {
+				// A prerequisite the course could do without - the second of two
+				// alternatives - is drawn dashed, so the tree shows what is actually
+				// carrying each requirement.
+				graph.addDirectedEdge(link.from, link.to, {
+					type: surplus.has(`${link.from}>${link.to}`) ? 'dashedArrow' : 'arrow',
 					color: EDGE_COLOR[currentTheme],
 					size: 4
 				});
 			}
 		}
 
+		const layout = tieredLayout(
+			nodes.map((node) => ({ id: node.code, tier: node.tier })),
+			links.map((link) => ({ source: link.from, target: link.to })),
+			// Rows sit closer together than columns so the tree reads as tiers
+			// rather than as a scattering of points.
+			{ nodeWidth: 150, nodeHeight: 40, xGap: 130, yGap: 110 }
+		);
+
 		const targets: Record<string, { x: number; y: number }> = {};
 		for (const [code, point] of layout.positions) targets[code] = point;
-		for (const bends of layout.bends.values()) {
-			for (const bend of bends) targets[bend.id] = { x: bend.x, y: bend.y };
-		}
 
 		// Cancel any animation still running. Adding a course changes the drawn set
 		// and then the edges, so this effect fires twice in quick succession; two
