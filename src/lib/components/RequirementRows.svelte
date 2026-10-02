@@ -95,7 +95,7 @@
 						</p>
 					{:else if option.kind === 'course'}
 						<label
-							class="flex cursor-pointer items-start gap-2 rounded px-2 py-1 text-xs hover:bg-[var(--chip)]"
+							class="flex cursor-pointer items-start gap-2 rounded px-2 py-2 text-xs hover:bg-[var(--chip)] md:py-1"
 							title={option.label}
 						>
 							<input

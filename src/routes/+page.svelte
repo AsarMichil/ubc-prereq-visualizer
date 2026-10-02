@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -39,7 +40,15 @@
 	 * view that is meant to be hidden.
 	 */
 	const exploreEnabled = $derived(flags.enabled('explore'));
-	const activeMode = $derived(mode === 'explore' && !exploreEnabled ? 'build' : mode);
+
+	/**
+	 * Phones get the builder only. The full map is a few thousand nodes plus two
+	 * side panels; on a phone there is room for neither, so explore and its
+	 * controls are dropped rather than squeezed. Matches Tailwind's `md`.
+	 */
+	const small = new MediaQuery('max-width: 767px');
+	const showExplore = $derived(exploreEnabled && !small.current);
+	const activeMode = $derived(mode === 'explore' && !showExplore ? 'build' : mode);
 
 	let error = $state<string | null>(null);
 	let panelOpen = $state(true);
@@ -105,7 +114,7 @@
 	}
 
 	function setMode(next: 'explore' | 'build'): void {
-		if (next === 'explore' && !exploreEnabled) return;
+		if (next === 'explore' && !showExplore) return;
 		mode = next;
 		// Carry a course chosen on the map over into the builder.
 		if (next === 'build' && explorer.focus && !builder.has(explorer.focus)) {
@@ -126,9 +135,12 @@
 	/>
 </svelte:head>
 
-<div class="flex h-screen w-screen flex-col overflow-hidden">
-	<header class="flex items-center gap-4 border-b border-[var(--line)] px-4 py-2.5">
-		{#if exploreEnabled}
+<!-- dvh, not vh: on a phone, vh includes the space under the browser's toolbars. -->
+<div class="flex h-dvh w-screen flex-col overflow-hidden">
+	<header
+		class="flex items-center gap-2 border-b border-[var(--line)] px-3 py-2 md:gap-4 md:px-4 md:py-2.5"
+	>
+		{#if showExplore}
 			<button
 				type="button"
 				class="rounded border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--chip)]"
@@ -139,9 +151,10 @@
 			>
 		{/if}
 
-		<h1 class="text-sm font-semibold whitespace-nowrap">UBC Prerequisites</h1>
+		<!-- On a phone the search box needs the width more than the title does. -->
+		<h1 class="hidden text-sm font-semibold whitespace-nowrap sm:block">UBC Prerequisites</h1>
 
-		{#if exploreEnabled}
+		{#if showExplore}
 			<div class="flex rounded border border-[var(--line)] p-0.5 text-xs">
 				{#each [['explore', 'Explore'], ['build', 'Build a path']] as [value, label] (value)}
 					<button
@@ -155,7 +168,7 @@
 			</div>
 		{/if}
 
-		<div class="max-w-md flex-1"><SearchBox onSelect={selectCourse} /></div>
+		<div class="max-w-md min-w-0 flex-1"><SearchBox onSelect={selectCourse} /></div>
 
 		{#if activeMode === 'build' && !builder.isEmpty}
 			<button

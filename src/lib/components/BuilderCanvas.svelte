@@ -320,7 +320,7 @@
 
 	{#if builder.codes.length <= 1}
 		<p
-			class="pointer-events-none absolute inset-x-0 bottom-10 text-center text-xs"
+			class="pointer-events-none absolute inset-x-0 bottom-16 px-4 text-center text-xs md:bottom-10"
 			style:color={INK[theme].secondary}
 		>
 			Click a course to see what it requires, or use the panel to expand it either way.
