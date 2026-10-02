@@ -49,7 +49,10 @@
 <div class="flex flex-col gap-3" class:gap-4={depth === 0}>
 	{#each rows as group (group.id)}
 		{@const already = group.satisfiedBy.length > 0}
-		{@const met = already || groupSatisfied(group, selected, creditsOf)}
+		<!-- `selected` already includes drawn courses, so this covers rows met by
+		     the tree. Don't shortcut on `already`: drawn courses meeting *part* of
+		     a Required row ("all of A, B, C, D" with D missing) is progress, not ✓. -->
+		{@const met = groupSatisfied(group, selected, creditsOf)}
 		<div>
 			<p class="mb-1.5 text-[11px] font-semibold tracking-wide uppercase">
 				<span style:color={met ? hopColor(1, theme) : INK[theme].secondary}>
@@ -60,7 +63,7 @@
 
 			{#if already}
 				<p class="px-2 py-1 font-mono text-xs text-[var(--ink-secondary)]">
-					Met by {group.satisfiedBy.join(', ')}
+					{met ? 'Met by' : 'Have'} {group.satisfiedBy.join(', ')}
 				</p>
 			{/if}
 
