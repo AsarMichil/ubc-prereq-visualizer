@@ -7,6 +7,7 @@
 	 * which is what lets the view stay a real graph instead of a list of chips.
 	 */
 	import { resolve } from '$app/paths';
+	import { MediaQuery } from 'svelte/reactivity';
 	import type { Direction } from '$lib/state/pathBuilder.svelte';
 	import { getBuilder, getExplorer } from '$lib/state/context';
 	import { displayGroups, groupSatisfied } from '$lib/graph/requirementGroups';
@@ -25,6 +26,13 @@
 	const swatches = $derived(yearSwatches(theme));
 
 	const expandingNode = $derived(builder.expanding);
+
+	/** Below `md` the panel is a modal over the canvas rather than a sidebar. */
+	const small = new MediaQuery('max-width: 767px');
+
+	function close(): void {
+		builder.expanding = null;
+	}
 
 	const visibleForward = $derived.by(() => {
 		const needle = forwardFilter.trim().toLowerCase();
@@ -78,6 +86,12 @@
 	);
 </script>
 
+<svelte:window
+	onkeydown={(event) => {
+		if (event.key === 'Escape' && small.current && expandingNode) close();
+	}}
+/>
+
 <div class="flex h-full min-h-0">
 	<div class="relative min-w-0 flex-1">
 		{#if builder.isEmpty}
@@ -102,12 +116,57 @@
 		{:else}
 			<BuilderCanvas />
 		{/if}
+
+		<!--
+			Legend: colour is year level, as on the map. The line and ring keys are here
+			because neither is guessable - a dashed edge could as easily mean "optional".
+		-->
+		{#if !builder.isEmpty}
+			<div
+				class="pointer-events-none absolute bottom-3 left-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-x-3 gap-y-1 rounded border border-[var(--line)] bg-[var(--surface)]/90 px-3 py-1.5 text-[11px] md:left-6"
+			>
+				{#each swatches as swatch (swatch.label)}
+					<span class="flex items-center gap-1.5">
+						<span class="h-2.5 w-2.5 rounded-full" style:background={swatch.color}></span>
+						{swatch.label}
+					</span>
+				{/each}
+				<span class="flex items-center gap-1.5 border-l border-[var(--line)] pl-3">
+					<svg width="18" height="4" aria-hidden="true">
+						<line
+							x1="0"
+							y1="2"
+							x2="18"
+							y2="2"
+							stroke={EDGE_COLOR[theme]}
+							stroke-width="2.5"
+							stroke-dasharray="5 4"
+						/>
+					</svg>
+					Extra option
+				</span>
+				<span class="flex items-center gap-1.5">
+					<span class="h-2.5 w-2.5 rounded-full border-2" style:border-color={INCOMPLETE[theme]}
+					></span>
+					Needs more
+				</span>
+			</div>
+		{/if}
 	</div>
 
-	<!-- The candidate panel -->
+	<!--
+		The candidate panel: a sidebar from md up, a modal below that. Adding courses
+		closes it (see `builder.add`), so on a phone you land back on the graph.
+	-->
 	{#if expandingNode}
+		<!-- The keyboard route out is Escape, handled on the window above. -->
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+		<div class="fixed inset-0 z-30 bg-black/50 md:hidden" onclick={close}></div>
 		<aside
-			class="flex w-[24rem] shrink-0 flex-col overflow-y-auto border-l border-[var(--line)] bg-[var(--surface)] p-4"
+			role={small.current ? 'dialog' : undefined}
+			aria-modal={small.current ? 'true' : undefined}
+			aria-label={small.current ? expandingNode.code : undefined}
+			class="fixed inset-3 z-40 m-auto flex h-fit max-h-[calc(100dvh-1.5rem)] flex-col overflow-y-auto overscroll-contain rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-2xl md:static md:inset-auto md:z-auto md:m-0 md:h-auto md:max-h-none md:w-[24rem] md:shrink-0 md:rounded-none md:border-0 md:border-l md:shadow-none"
 		>
 			<div class="flex items-start justify-between gap-2">
 				<h2 class="font-mono text-sm font-semibold">{expandingNode.code}</h2>
@@ -115,13 +174,13 @@
 					<button
 						type="button"
 						title="Remove this course, and anything left stranded by it"
-						class="rounded px-2 py-1 text-xs text-[var(--ink-secondary)] hover:bg-[var(--chip)]"
+						class="rounded px-2.5 py-2 text-xs text-[var(--ink-secondary)] hover:bg-[var(--chip)] md:px-2 md:py-1"
 						onclick={() => builder.remove(expandingNode.code)}>Remove</button
 					>
 					<button
 						type="button"
-						class="rounded px-2 py-1 text-xs text-[var(--ink-secondary)] hover:bg-[var(--chip)]"
-						onclick={() => (builder.expanding = null)}>Close</button
+						class="rounded px-2.5 py-2 text-xs text-[var(--ink-secondary)] hover:bg-[var(--chip)] md:px-2 md:py-1"
+						onclick={close}>Close</button
 					>
 				</div>
 			</div>
@@ -131,7 +190,7 @@
 				{#each [['back', 'Requires'], ['forward', 'Unlocks']] as [value, label] (value)}
 					<button
 						type="button"
-						class="flex-1 rounded px-2 py-1"
+						class="flex-1 rounded px-2 py-2 md:py-1"
 						style:background={expandingNode.direction === value
 							? 'var(--chip-active)'
 							: 'transparent'}
@@ -172,14 +231,14 @@
 				<input
 					type="search"
 					placeholder="Filter…"
-					class="mt-2 w-full rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-xs"
+					class="mt-2 w-full rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-base md:text-xs"
 					bind:value={forwardFilter}
 				/>
 				<div class="mt-2 flex flex-col gap-0.5">
 					{#each visibleForward as candidate (candidate.code)}
 						{@const already = !selectable(candidate.code)}
 						<label
-							class="flex cursor-pointer items-start gap-2 rounded px-2 py-1 text-xs hover:bg-[var(--chip)]"
+							class="flex cursor-pointer items-start gap-2 rounded px-2 py-2 text-xs hover:bg-[var(--chip)] md:py-1"
 							class:opacity-50={already}
 						>
 							<input
@@ -202,10 +261,13 @@
 			{/if}
 
 			{#if !builder.loading && (builder.groups.length > 0 || builder.forward.length > 0)}
-				<div class="mt-4 flex items-center gap-2 border-t border-[var(--line)] pt-3">
+				<!-- Sticky, so a long list never scrolls the button out of reach. -->
+				<div
+					class="sticky -bottom-4 -mx-4 mt-4 -mb-4 flex items-center gap-2 border-t border-[var(--line)] bg-[var(--surface)] px-4 pt-3 pb-4"
+				>
 					<button
 						type="button"
-						class="rounded bg-[var(--chip-active)] px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+						class="rounded bg-[var(--chip-active)] px-3 py-2 text-xs font-medium disabled:opacity-40 md:py-1.5"
 						disabled={picked.length === 0}
 						onclick={commit}
 					>
@@ -222,38 +284,3 @@
 		</aside>
 	{/if}
 </div>
-
-<!--
-	Legend: colour is year level, as on the map. The line and ring keys are here
-	because neither is guessable - a dashed edge could as easily mean "optional".
--->
-{#if !builder.isEmpty}
-	<div
-		class="pointer-events-none absolute bottom-3 left-6 flex gap-3 rounded border border-[var(--line)] bg-[var(--surface)]/90 px-3 py-1.5 text-[11px]"
-	>
-		{#each swatches as swatch (swatch.label)}
-			<span class="flex items-center gap-1.5">
-				<span class="h-2.5 w-2.5 rounded-full" style:background={swatch.color}></span>
-				{swatch.label}
-			</span>
-		{/each}
-		<span class="flex items-center gap-1.5 border-l border-[var(--line)] pl-3">
-			<svg width="18" height="4" aria-hidden="true">
-				<line
-					x1="0"
-					y1="2"
-					x2="18"
-					y2="2"
-					stroke={EDGE_COLOR[theme]}
-					stroke-width="2.5"
-					stroke-dasharray="5 4"
-				/>
-			</svg>
-			Extra option
-		</span>
-		<span class="flex items-center gap-1.5">
-			<span class="h-2.5 w-2.5 rounded-full border-2" style:border-color={INCOMPLETE[theme]}></span>
-			Needs more
-		</span>
-	</div>
-{/if}

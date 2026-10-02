@@ -42,10 +42,11 @@
 </script>
 
 <div class="relative">
+	<!-- 16px on phones: iOS Safari zooms the page into any smaller input on focus. -->
 	<input
 		type="search"
 		placeholder="Search a course, e.g. CPSC 110"
-		class="w-full rounded border border-[var(--line)] bg-[var(--surface)] px-3 py-1.5 text-sm"
+		class="w-full rounded border border-[var(--line)] bg-[var(--surface)] px-3 py-1.5 text-base md:text-sm"
 		bind:value={term}
 		onfocus={() => (open = true)}
 		oninput={() => (open = true)}
@@ -59,7 +60,7 @@
 				<li>
 					<button
 						type="button"
-						class="block w-full px-3 py-1.5 text-left text-xs hover:bg-[var(--chip)]"
+						class="block w-full px-3 py-2.5 text-left text-sm hover:bg-[var(--chip)] md:py-1.5 md:text-xs"
 						onclick={() => choose(result.code)}
 					>
 						<span class="font-mono font-medium">{result.code}</span>
