@@ -60,6 +60,11 @@
 		     the tree. Don't shortcut on `already`: drawn courses meeting *part* of
 		     a Required row ("all of A, B, C, D" with D missing) is progress, not ✓. -->
 		{@const met = groupSatisfied(group, selected, creditsOf)}
+		<!-- A choice holding a nested group gets an "or" between its options:
+		     a heading above a run of single courses says "pick one" plainly,
+		     but beside a nested "All of" it reads as more of the same list. -->
+		{@const divided =
+			group.kind === 'choose' && group.visible.some((option) => option.kind === 'compound')}
 		<div>
 			{#if heading(group)}
 				<!-- Nested, the heading lines up with the sibling options' checkboxes:
@@ -93,6 +98,16 @@
 
 				<div class="flex flex-col gap-1">
 					{#each group.visible as option, index (option.label + index)}
+						{#if divided && index > 0}
+							<div
+								class="flex items-center gap-2 px-2 py-0.5 text-[11px] text-[var(--ink-muted)]"
+								aria-hidden="true"
+							>
+								<span class="h-px flex-1 bg-[var(--line)]"></span>
+								or
+								<span class="h-px flex-1 bg-[var(--line)]"></span>
+							</div>
+						{/if}
 						{#if option.kind === 'condition'}
 							<p class="px-2 py-1 text-xs text-[var(--ink-secondary)] italic">{option.label}</p>
 						{:else if option.kind === 'highSchool'}
