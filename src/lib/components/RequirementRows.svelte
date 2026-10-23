@@ -41,8 +41,15 @@
 	 */
 	const selected = $derived(new Set([...picked, ...drawn]));
 
-	function heading(group: RequirementGroup): string {
-		return group.kind === 'required' ? 'Required' : `Choose ${group.n}`;
+	/**
+	 * Every top-level row has to be met, so a must-have row there needs no
+	 * heading - "Required" over a lone course said nothing. Nested inside a
+	 * choice it is one option bundling several courses, which is not "required"
+	 * at all: it is "all of" these, together.
+	 */
+	function heading(group: RequirementGroup): string | null {
+		if (group.kind === 'choose') return `Choose ${group.n}`;
+		return depth === 0 ? null : 'All of';
 	}
 </script>
 
@@ -54,16 +61,19 @@
 		     a Required row ("all of A, B, C, D" with D missing) is progress, not ✓. -->
 		{@const met = groupSatisfied(group, selected, creditsOf)}
 		<div>
-			<p class="mb-1.5 text-[11px] font-semibold tracking-wide uppercase">
-				<span style:color={met ? hopColor(1, theme) : INK[theme].secondary}>
-					{heading(group)}
-				</span>
-				{#if met}<span class="text-[var(--ink-muted)]">· ✓</span>{/if}
-			</p>
+			{#if heading(group)}
+				<p class="mb-1.5 text-[11px] font-semibold tracking-wide uppercase">
+					<span style:color={met ? hopColor(1, theme) : INK[theme].secondary}>
+						{heading(group)}
+					</span>
+					{#if met}<span class="text-[var(--ink-muted)]">· ✓</span>{/if}
+				</p>
+			{/if}
 
 			{#if already}
 				<p class="px-2 py-1 font-mono text-xs text-[var(--ink-secondary)]">
-					{met ? 'Met by' : 'Have'} {group.satisfiedBy.join(', ')}
+					{met ? 'Met by' : 'Have'}
+					{group.satisfiedBy.join(', ')}
 				</p>
 			{/if}
 
