@@ -13,7 +13,8 @@
 	import { displayGroups, groupSatisfied } from '$lib/graph/requirementGroups';
 	import BuilderCanvas from './BuilderCanvas.svelte';
 	import RequirementRows from './RequirementRows.svelte';
-	import { EDGE_COLOR, INCOMPLETE, yearSwatches } from '$lib/graph/palette';
+	import { EDGE_COLOR, INCOMPLETE, INK, yearSwatches } from '$lib/graph/palette';
+	import { flags } from '$lib/flags.svelte';
 
 	const builder = getBuilder();
 	const explorer = getExplorer();
@@ -26,6 +27,18 @@
 	const swatches = $derived(yearSwatches(theme));
 
 	const expandingNode = $derived(builder.expanding);
+
+	/**
+	 * Legend keys only for marks actually on screen: on a phone the legend shares
+	 * the canvas, and a key for something not drawn is a question with no answer.
+	 */
+	const alternatives = $derived(flags.enabled('junctions') ? builder.alternatives : []);
+	const dashedShown = $derived.by(() => {
+		const joined = new Set(
+			alternatives.flatMap((set) => set.from.map((code) => `${code}>${set.to}`))
+		);
+		return [...builder.surplus].some((key) => !joined.has(key));
+	});
 
 	/** Below `md` the panel is a modal over the canvas rather than a sidebar. */
 	const small = new MediaQuery('max-width: 767px');
@@ -118,38 +131,71 @@
 		{/if}
 
 		<!--
-			Legend: colour is year level, as on the map. The line and ring keys are here
-			because neither is guessable - a dashed edge could as easily mean "optional".
+			Legend: colour is year level, as on the map. The edge keys come first
+			because none of them is guessable: which way an arrow runs, what the "or"
+			joining two lines means, a dashed edge (which could as easily mean
+			"optional"), and the ring.
 		-->
 		{#if !builder.isEmpty}
 			<div
-				class="pointer-events-none absolute bottom-3 left-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-x-3 gap-y-1 rounded border border-[var(--line)] bg-[var(--surface)]/90 px-3 py-1.5 text-[11px] md:left-6"
+				class="pointer-events-none absolute bottom-3 left-3 flex max-w-[calc(100%-1.5rem)] flex-col gap-1 rounded border border-[var(--line)] bg-[var(--surface)]/90 px-3 py-1.5 text-[11px] md:left-6"
 			>
-				{#each swatches as swatch (swatch.label)}
-					<span class="flex items-center gap-1.5">
-						<span class="h-2.5 w-2.5 rounded-full" style:background={swatch.color}></span>
-						{swatch.label}
-					</span>
-				{/each}
-				<span class="flex items-center gap-1.5 border-l border-[var(--line)] pl-3">
-					<svg width="18" height="4" aria-hidden="true">
-						<line
-							x1="0"
-							y1="2"
-							x2="18"
-							y2="2"
-							stroke={EDGE_COLOR[theme]}
-							stroke-width="2.5"
-							stroke-dasharray="5 4"
-						/>
-					</svg>
-					Extra option
-				</span>
-				<span class="flex items-center gap-1.5">
-					<span class="h-2.5 w-2.5 rounded-full border-2" style:border-color={INCOMPLETE[theme]}
-					></span>
-					Needs more
-				</span>
+				{#if builder.edges.length > 0}
+					<div class="flex flex-wrap gap-x-3 gap-y-1">
+						<span class="flex items-center gap-1.5">
+							<span class="font-mono font-medium">A</span>
+							<svg width="22" height="8" aria-hidden="true">
+								<line x1="0" y1="4" x2="16" y2="4" stroke={EDGE_COLOR[theme]} stroke-width="2" />
+								<path d="M15 0.5 L22 4 L15 7.5 Z" fill={EDGE_COLOR[theme]} />
+							</svg>
+							<span class="font-mono font-medium">B</span>
+							<span class="text-[var(--ink-secondary)]">A is required for B</span>
+						</span>
+						{#if alternatives.length > 0}
+							<span class="flex items-center gap-1.5">
+								<span
+									class="rounded-full border-[1.5px] px-1.5 font-mono text-[10px] leading-[1.35]"
+									style:border-color={EDGE_COLOR[theme]}
+									style:color={INK[theme].secondary}>or</span
+								>
+								<span class="text-[var(--ink-secondary)]">any one is enough</span>
+							</span>
+						{/if}
+						{#if dashedShown}
+							<span class="flex items-center gap-1.5">
+								<svg width="18" height="4" aria-hidden="true">
+									<line
+										x1="0"
+										y1="2"
+										x2="18"
+										y2="2"
+										stroke={EDGE_COLOR[theme]}
+										stroke-width="2.5"
+										stroke-dasharray="5 4"
+									/>
+								</svg>
+								<span class="text-[var(--ink-secondary)]">Extra option</span>
+							</span>
+						{/if}
+						{#if builder.unmet.size > 0}
+							<span class="flex items-center gap-1.5">
+								<span
+									class="h-2.5 w-2.5 rounded-full border-2"
+									style:border-color={INCOMPLETE[theme]}
+								></span>
+								<span class="text-[var(--ink-secondary)]">Needs more</span>
+							</span>
+						{/if}
+					</div>
+				{/if}
+				<div class="flex flex-wrap gap-x-3 gap-y-1">
+					{#each swatches as swatch (swatch.label)}
+						<span class="flex items-center gap-1.5">
+							<span class="h-2.5 w-2.5 rounded-full" style:background={swatch.color}></span>
+							{swatch.label}
+						</span>
+					{/each}
+				</div>
 			</div>
 		{/if}
 	</div>

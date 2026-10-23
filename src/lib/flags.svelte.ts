@@ -31,6 +31,11 @@ export const FLAGS = {
 	explore: {
 		default: false,
 		description: 'The full-map explore view. Off until it is ready for users.'
+	},
+	junctions: {
+		default: true,
+		description:
+			'In the builder, join alternative prerequisites at an "or" junction instead of dashing the extra one.'
 	}
 } as const satisfies Record<string, FlagDefinition>;
 

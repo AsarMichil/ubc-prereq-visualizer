@@ -483,3 +483,46 @@ export function surplusPrerequisites(
 	groups.forEach(useGroup);
 	return new Set([...mentioned].filter((code) => !used.has(code)));
 }
+
+/** Drawn courses that are alternatives for one another within a single row. */
+export interface AlternativeSet {
+	/** Drawn courses, any `n` of which meet the row; always two or more. */
+	codes: CourseCode[];
+	n: number;
+}
+
+/**
+ * The "pick N" rows where more than one drawn course is an option, so the canvas
+ * can draw them converging on one point before they reach the course - a Y, which
+ * says "either of these" where two separate arrows say "both".
+ *
+ * Only plain course options join a set. A compound option ("CPSC 110 and CPSC
+ * 121") is a bundle, not a single alternative, so its courses keep their own
+ * edges - but a "pick one" nested inside it is still looked at. A course is put
+ * in at most one set, the first row that mentions it.
+ */
+export function alternativeSets(
+	groups: RequirementGroup[],
+	drawn: ReadonlySet<string>
+): AlternativeSet[] {
+	const sets: AlternativeSet[] = [];
+	const taken = new Set<CourseCode>();
+
+	const visit = (group: RequirementGroup): void => {
+		if (group.kind === 'choose') {
+			const codes = group.options
+				.filter((option) => option.kind === 'course')
+				.map((option) => option.code)
+				.filter((code) => drawn.has(code) && !taken.has(code));
+			const unique = [...new Set(codes)];
+			if (unique.length >= 2) {
+				for (const code of unique) taken.add(code);
+				sets.push({ codes: unique, n: group.n });
+			}
+		}
+		for (const option of group.options) if (option.kind === 'compound') visit(option.group);
+	};
+
+	groups.forEach(visit);
+	return sets;
+}

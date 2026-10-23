@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseRequirement } from '../scripts/lib/parseRequirement.ts';
 import {
+	alternativeSets,
 	alwaysRequired,
 	groupSatisfied,
 	requirementGroups,
@@ -209,5 +210,47 @@ describe('surplusPrerequisites', () => {
 		expect(
 			surplus('Either (a) CPSC 110 and CPSC 121 or (b) CPSC 107', ['CPSC 107', 'CPSC 110'])
 		).toEqual(['CPSC 110']);
+	});
+});
+
+describe('alternativeSets', () => {
+	const sets = (clause: string, drawn: string[]) =>
+		alternativeSets(groupsFor(clause), new Set(drawn));
+
+	it('groups drawn alternatives from one row', () => {
+		expect(
+			sets('One of CPSC 210, CPEN 221, EECE 210', ['CPSC 210', 'CPEN 221', 'MATH 100'])
+		).toEqual([{ codes: ['CPSC 210', 'CPEN 221'], n: 1 }]);
+	});
+
+	it('needs two drawn alternatives to make a set', () => {
+		expect(sets('One of CPSC 210, CPEN 221', ['CPSC 210'])).toEqual([]);
+	});
+
+	it('keeps separate rows apart and ignores required courses', () => {
+		expect(
+			sets('All of CPSC 213, one of CPSC 210, CPEN 221 and one of CPSC 121, MATH 220', [
+				'CPSC 213',
+				'CPSC 210',
+				'CPEN 221',
+				'CPSC 121',
+				'MATH 220'
+			])
+		).toEqual([
+			{ codes: ['CPSC 210', 'CPEN 221'], n: 1 },
+			{ codes: ['CPSC 121', 'MATH 220'], n: 1 }
+		]);
+	});
+
+	it('carries the quantity of a "pick N" row', () => {
+		expect(
+			sets('Two of MATH 200, MATH 221, MATH 256', ['MATH 200', 'MATH 221', 'MATH 256'])
+		).toEqual([{ codes: ['MATH 200', 'MATH 221', 'MATH 256'], n: 2 }]);
+	});
+
+	it('treats a bundle of courses as one option, not alternatives', () => {
+		expect(
+			sets('Either (a) CPSC 110 and CPSC 121 or (b) CPSC 107', ['CPSC 107', 'CPSC 110', 'CPSC 121'])
+		).toEqual([]);
 	});
 });
