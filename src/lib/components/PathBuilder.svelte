@@ -141,54 +141,64 @@
 				class="pointer-events-none absolute bottom-3 left-3 flex max-w-[calc(100%-1.5rem)] flex-col gap-1 rounded border border-[var(--line)] bg-[var(--surface)]/90 px-3 py-1.5 text-[11px] md:left-6"
 			>
 				{#if builder.edges.length > 0}
-					<div class="flex flex-wrap gap-x-3 gap-y-1">
-						<span class="flex items-center gap-1.5">
-							<span class="font-mono font-medium">A</span>
+					<!--
+						A grid rather than a wrapping row: the marks share one column, centred,
+						so every description starts at the same x however the keys wrap.
+					-->
+					<div class="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 leading-4">
+						<span class="flex items-center justify-center gap-1 font-mono font-medium">
+							A
 							<svg width="22" height="8" aria-hidden="true">
 								<line x1="0" y1="4" x2="16" y2="4" stroke={EDGE_COLOR[theme]} stroke-width="2" />
 								<path d="M15 0.5 L22 4 L15 7.5 Z" fill={EDGE_COLOR[theme]} />
 							</svg>
-							<span class="font-mono font-medium">B</span>
-							<span class="text-[var(--ink-secondary)]">A is required for B</span>
+							B
 						</span>
+						<span class="text-[var(--ink-secondary)]">A is required for B</span>
 						{#if alternatives.length > 0}
-							<span class="flex items-center gap-1.5">
+							<span class="flex justify-center">
 								<span
-									class="rounded-full border-[1.5px] px-1.5 font-mono text-[10px] leading-[1.35]"
+									class="flex h-[15px] items-center rounded-full border-[1.5px] px-1.5 pt-px font-mono text-[10px] leading-none"
 									style:border-color={EDGE_COLOR[theme]}
 									style:color={INK[theme].secondary}>or</span
 								>
-								<span class="text-[var(--ink-secondary)]">any one is enough</span>
 							</span>
+							<span class="text-[var(--ink-secondary)]">Any one of them is enough</span>
 						{/if}
 						{#if dashedShown}
-							<span class="flex items-center gap-1.5">
-								<svg width="18" height="4" aria-hidden="true">
+							<span class="flex justify-center">
+								<svg width="22" height="4" aria-hidden="true">
 									<line
 										x1="0"
 										y1="2"
-										x2="18"
+										x2="22"
 										y2="2"
 										stroke={EDGE_COLOR[theme]}
 										stroke-width="2.5"
 										stroke-dasharray="5 4"
 									/>
 								</svg>
-								<span class="text-[var(--ink-secondary)]">Extra option</span>
 							</span>
+							<span class="text-[var(--ink-secondary)]">Extra option</span>
 						{/if}
 						{#if builder.unmet.size > 0}
-							<span class="flex items-center gap-1.5">
+							<span class="flex justify-center">
 								<span
 									class="h-2.5 w-2.5 rounded-full border-2"
 									style:border-color={INCOMPLETE[theme]}
 								></span>
-								<span class="text-[var(--ink-secondary)]">Needs more</span>
 							</span>
+							<span class="text-[var(--ink-secondary)]">Needs more</span>
 						{/if}
 					</div>
 				{/if}
-				<div class="flex flex-wrap gap-x-3 gap-y-1">
+				<div
+					class="flex flex-wrap gap-x-3 gap-y-1 leading-4"
+					class:border-t={builder.edges.length > 0}
+					class:pt-1.5={builder.edges.length > 0}
+					class:mt-0.5={builder.edges.length > 0}
+					style:border-color="var(--line)"
+				>
 					{#each swatches as swatch (swatch.label)}
 						<span class="flex items-center gap-1.5">
 							<span class="h-2.5 w-2.5 rounded-full" style:background={swatch.color}></span>
