@@ -62,7 +62,9 @@
 		{@const met = groupSatisfied(group, selected, creditsOf)}
 		<div>
 			{#if heading(group)}
-				<p class="mb-1.5 text-[11px] font-semibold tracking-wide uppercase">
+				<!-- Nested, the heading lines up with the sibling options' checkboxes:
+				     it is one of those options. Only its contents step in. -->
+				<p class="mb-1.5 text-[11px] font-semibold tracking-wide uppercase" class:px-2={depth > 0}>
 					<span style:color={met ? hopColor(1, theme) : INK[theme].secondary}>
 						{heading(group)}
 					</span>
@@ -70,63 +72,67 @@
 				</p>
 			{/if}
 
-			{#if already}
-				<p class="px-2 py-1 font-mono text-xs text-[var(--ink-secondary)]">
-					{met ? 'Met by' : 'Have'}
-					{group.satisfiedBy.join(', ')}
-				</p>
-			{/if}
+			<div
+				class:ml-3={depth > 0}
+				class:border-l-2={depth > 0}
+				class:pl-2={depth > 0}
+				style:border-color={depth > 0 ? (met ? hopColor(1, theme) : 'var(--line)') : undefined}
+			>
+				{#if already}
+					<p class="px-2 py-1 font-mono text-xs text-[var(--ink-secondary)]">
+						{met ? 'Met by' : 'Have'}
+						{group.satisfiedBy.join(', ')}
+					</p>
+				{/if}
 
-			{#if group.unavailable}
-				<p class="px-2 py-1 text-xs text-[var(--ink-secondary)] italic">
-					Only satisfiable by a UBC Okanagan course, which isn't offered here.
-				</p>
-			{/if}
+				{#if group.unavailable}
+					<p class="px-2 py-1 text-xs text-[var(--ink-secondary)] italic">
+						Only satisfiable by a UBC Okanagan course, which isn't offered here.
+					</p>
+				{/if}
 
-			<div class="flex flex-col gap-1">
-				{#each group.visible as option, index (option.label + index)}
-					{#if option.kind === 'condition'}
-						<p class="px-2 py-1 text-xs text-[var(--ink-secondary)] italic">{option.label}</p>
-					{:else if option.kind === 'highSchool'}
-						<p class="px-2 py-1 text-xs text-[var(--ink-secondary)]">
-							{option.label}
-							<span class="text-[var(--ink-muted)]">· high school</span>
-						</p>
-					{:else if option.kind === 'credits'}
-						{@const progress = creditsToward(option, selected, creditsOf)}
-						<p class="px-2 py-1 text-xs text-[var(--ink-secondary)]">
-							<span class="font-medium">{option.count} credits</span>
-							from {option.subjects.join(' or ')}{option.minLevel ? ` at ${option.minLevel}+` : ''}
-							<!-- Naming the courses that count is what makes the quota feel
+				<div class="flex flex-col gap-1">
+					{#each group.visible as option, index (option.label + index)}
+						{#if option.kind === 'condition'}
+							<p class="px-2 py-1 text-xs text-[var(--ink-secondary)] italic">{option.label}</p>
+						{:else if option.kind === 'highSchool'}
+							<p class="px-2 py-1 text-xs text-[var(--ink-secondary)]">
+								{option.label}
+								<span class="text-[var(--ink-muted)]">· high school</span>
+							</p>
+						{:else if option.kind === 'credits'}
+							{@const progress = creditsToward(option, selected, creditsOf)}
+							<p class="px-2 py-1 text-xs text-[var(--ink-secondary)]">
+								<span class="font-medium">{option.count} credits</span>
+								from {option.subjects.join(' or ')}{option.minLevel
+									? ` at ${option.minLevel}+`
+									: ''}
+								<!-- Naming the courses that count is what makes the quota feel
 							     selectable: there is no box to tick, so the only feedback is
 							     seeing a course you added land against it. -->
-							{#if progress.total > 0}
-								<span style:color={progress.total >= option.count ? hopColor(1, theme) : undefined}>
-									· {progress.total}/{option.count} from {progress.courses.join(', ')}
-								</span>
-							{/if}
-						</p>
-					{:else if option.kind === 'course'}
-						<label
-							class="flex cursor-pointer items-start gap-2 rounded px-2 py-2 text-xs hover:bg-[var(--chip)] md:py-1"
-							title={option.label}
-						>
-							<input
-								type="checkbox"
-								class="mt-0.5 shrink-0"
-								checked={picked.has(option.code)}
-								onchange={() => onToggle(option.code)}
-							/>
-							<span class="min-w-0 font-mono break-words">{option.label}</span>
-						</label>
-					{:else}
-						<!-- A nested alternative: indent it and render its own rows. -->
-						<div
-							class="ml-1 border-l-2 pl-2.5"
-							style:border-color={groupSatisfied(option.group, selected, creditsOf)
-								? hopColor(1, theme)
-								: 'var(--line)'}
-						>
+								{#if progress.total > 0}
+									<span
+										style:color={progress.total >= option.count ? hopColor(1, theme) : undefined}
+									>
+										· {progress.total}/{option.count} from {progress.courses.join(', ')}
+									</span>
+								{/if}
+							</p>
+						{:else if option.kind === 'course'}
+							<label
+								class="flex cursor-pointer items-start gap-2 rounded px-2 py-2 text-xs hover:bg-[var(--chip)] md:py-1"
+								title={option.label}
+							>
+								<input
+									type="checkbox"
+									class="mt-0.5 shrink-0"
+									checked={picked.has(option.code)}
+									onchange={() => onToggle(option.code)}
+								/>
+								<span class="min-w-0 font-mono break-words">{option.label}</span>
+							</label>
+						{:else}
+							<!-- A nested alternative renders its own rows, indenting below its heading. -->
 							<RequirementRows
 								groups={[option.group]}
 								{drawn}
@@ -136,9 +142,9 @@
 								{onToggle}
 								depth={depth + 1}
 							/>
-						</div>
-					{/if}
-				{/each}
+						{/if}
+					{/each}
+				</div>
 			</div>
 		</div>
 	{/each}
