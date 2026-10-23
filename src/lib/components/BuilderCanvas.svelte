@@ -22,9 +22,12 @@
 		createEdgeDashedArrowProgram,
 		createEdgeDashedCurvedArrowProgram
 	} from '$lib/graph/dashedEdge';
+	import { createEdgeCurveProgram } from '@sigma/edge-curve';
 	import { curvatureAround } from '$lib/graph/edgeRouting';
 	import { makeHoverRenderer } from '$lib/graph/hoverRenderer';
+	import { makeJunctionLabelRenderer, skipJunctionHover } from '$lib/graph/junctionLabel';
 	import { tieredLayout } from '$lib/graph/layered';
+	import { flags } from '$lib/flags.svelte';
 
 	const builder = getBuilder();
 	const explorer = getExplorer();
@@ -52,6 +55,9 @@
 		size: number;
 		color: string;
 		tier: number;
+		/** An "or" junction where alternatives meet, not a course. */
+		junction?: boolean;
+		forceLabel?: boolean;
 	}
 
 	let container: HTMLDivElement;
@@ -77,7 +83,9 @@
 				edgeProgramClasses: {
 					dashedArrow: createEdgeDashedArrowProgram<BuilderNode>(),
 					curvedArrow: createEdgeCurvedArrowProgram<BuilderNode>(),
-					dashedCurvedArrow: createEdgeDashedCurvedArrowProgram<BuilderNode>()
+					dashedCurvedArrow: createEdgeDashedCurvedArrowProgram<BuilderNode>(),
+					// The arms of an "or" junction: they stop at the junction, so no head.
+					curve: createEdgeCurveProgram<BuilderNode>()
 				},
 				renderEdgeLabels: false,
 				labelFont: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -89,10 +97,13 @@
 				labelRenderedSizeThreshold: 0,
 				labelDensity: 1,
 				zoomToSizeRatioFunction: (ratio: number) => Math.max(Math.sqrt(ratio), 0.55),
-				defaultDrawNodeHover: makeHoverRenderer(theme)
+				defaultDrawNodeLabel: makeJunctionLabelRenderer(theme),
+				defaultDrawNodeHover: skipJunctionHover(makeHoverRenderer(theme))
 			});
 
-			renderer.on('clickNode', ({ node }) => void builder.expand(node, 'back'));
+			renderer.on('clickNode', ({ node }) => {
+				if (!graph.getNodeAttribute(node, 'junction')) void builder.expand(node, 'back');
+			});
 
 			// Sigma only re-measures its container on a window resize or a render,
 			// so the side panel opening would leave the canvases at their old width,
@@ -151,11 +162,23 @@
 		// there are, so a small tree reads as a compact cluster and a large one still
 		// uses the space.
 		const span = Math.max(maxX - minX, maxY - minY, 0.05);
-		const padding = Math.min(Math.max(3.4 - graph.order * 0.22, 1.3), 3.2);
-		const ratio = Math.min(span * padding, 4);
-		instance
-			.getCamera()
-			.animate({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, ratio }, { duration: 420 });
+		// Courses only: junctions are part of the edges, not more things to frame.
+		const padding = Math.min(Math.max(3.4 - builder.codes.length * 0.22, 1.3), 3.2);
+		let ratio = Math.min(span * padding, 4);
+		let x = (minX + maxX) / 2;
+
+		// On a phone the row runs across the narrow side, where labels - a fixed
+		// pixel width - collided at that padding. Fill the width instead, and leave
+		// room for the rightmost label rather than an equal margin either side.
+		// Portrait, the visible width at a given ratio is the ratio itself.
+		const width = container.clientWidth;
+		if (width < 640 && width <= container.clientHeight) {
+			const label = 72;
+			ratio = Math.min((span * Math.min(padding, 1.15)) / (1 - label / width), 4);
+			x += (label * ratio) / width / 2;
+		}
+
+		instance.getCamera().animate({ x, y: (minY + maxY) / 2, ratio }, { duration: 420 });
 	}
 
 	/**
@@ -169,11 +192,15 @@
 		const nodes = builder.tiers;
 		const links = builder.edges;
 		const surplus = builder.surplus;
+		const alternatives = flags.enabled('junctions') ? builder.alternatives : [];
 		const courses = explorer.map?.graph;
 		const currentTheme = theme;
 		if (!ready || !renderer) return;
 
-		const wanted = new Set(nodes.map((node) => node.code));
+		const wanted = new Set([
+			...nodes.map((node) => node.code),
+			...alternatives.map((set) => set.id)
+		]);
 		for (const existing of graph.nodes()) {
 			if (!wanted.has(existing)) graph.dropNode(existing);
 		}
@@ -216,38 +243,106 @@
 			links.map((link) => ({ source: link.from, target: link.to })),
 			// Rows sit closer together than columns so the tree reads as tiers
 			// rather than as a scattering of points.
-			{ nodeWidth: 150, nodeHeight: 40, xGap: 130, yGap: 110 }
+			{
+				nodeWidth: 150,
+				nodeHeight: 40,
+				xGap: 130,
+				yGap: 110,
+				groups: alternatives.map((set) => set.from)
+			}
 		);
 
 		const targets: Record<string, { x: number; y: number }> = {};
 		for (const [code, point] of layout.positions) targets[code] = point;
+		// Only courses are obstacles; a junction is a point on an edge.
+		const obstacles = { ...targets };
+
+		/**
+		 * Alternatives meet at a junction partway to the course, then carry on as one
+		 * arrow - a Y, which reads as "either of these" where separate arrows read
+		 * as "all of these". The junction sits under the alternatives' middle, half
+		 * way to the course from the nearest of them.
+		 */
+		const junctionOf: Record<string, string> = {};
+		for (const set of alternatives) {
+			const to = targets[set.to];
+			const from = set.from.map((code) => targets[code]).filter(Boolean);
+			if (!to || from.length < 2) continue;
+			const nearest = Math.min(...from.map((point) => Math.abs(point.y - to.y)));
+			const row = from.filter((point) => Math.abs(point.y - to.y) === nearest);
+			const below = row[0].y < to.y ? -1 : 1;
+			targets[set.id] = {
+				x: row.reduce((sum, point) => sum + point.x, 0) / row.length,
+				y: to.y + (below * nearest) / 2
+			};
+			for (const code of set.from) junctionOf[`${code}>${set.to}`] = set.id;
+
+			const label = set.n === 1 ? 'or' : `${set.n} of`;
+			if (graph.hasNode(set.id)) {
+				graph.mergeNodeAttributes(set.id, { label, color: EDGE_COLOR[currentTheme] });
+				continue;
+			}
+			// Grows out of the course it leads to, like a new course grows out of its
+			// relation.
+			const seed = graph.hasNode(set.to) ? graph.getNodeAttributes(set.to) : { x: 0, y: 0 };
+			graph.addNode(set.id, {
+				label,
+				junction: true,
+				forceLabel: true,
+				ringColor: 'rgba(0,0,0,0)',
+				ringSize: 0,
+				x: seed.x,
+				y: seed.y,
+				size: 3,
+				color: EDGE_COLOR[currentTheme],
+				tier: 0
+			});
+		}
+
+		/**
+		 * Rows are hop distance, so an edge can run along a row or skip one, straight
+		 * through an unrelated course. Such an edge takes the gentlest arc that
+		 * clears it; every other edge stays straight. Judged against where nodes are
+		 * headed, not where the animation has them now.
+		 */
+		const route = (source: string, target: string): number => {
+			const from = targets[source];
+			const to = targets[target];
+			if (!from || !to) return 0;
+			return curvatureAround(
+				from,
+				to,
+				Object.entries(obstacles)
+					.filter(([code]) => code !== source && code !== target)
+					.map(([, point]) => point),
+				// In layout units: roughly a node's radius plus a margin, and the
+				// width of a course code set in the label font.
+				{ clearance: 25, labelWidth: 85 }
+			);
+		};
 
 		graph.clearEdges();
 		for (const link of links) {
 			if (!graph.hasNode(link.from) || !graph.hasNode(link.to)) continue;
+
+			const junction = junctionOf[`${link.from}>${link.to}`];
+			if (junction && graph.hasNode(junction)) {
+				const curvature = route(link.from, junction);
+				graph.addDirectedEdge(link.from, junction, {
+					type: curvature ? 'curve' : 'line',
+					curvature,
+					color: EDGE_COLOR[currentTheme],
+					size: 4
+				});
+				continue;
+			}
+
 			// A prerequisite the course could do without - the second of two
 			// alternatives - is drawn dashed, so the tree shows what is actually
-			// carrying each requirement.
+			// carrying each requirement. With junctions on, that is left to the
+			// cases a junction can't show, like a half-drawn bundle of courses.
 			const dashed = surplus.has(`${link.from}>${link.to}`);
-			// Rows are hop distance, so an edge can run along a row or skip one,
-			// straight through an unrelated course. Such an edge takes the gentlest
-			// arc that clears it; every other edge stays straight. Judged against
-			// where nodes are headed, not where the animation has them now.
-			const from = targets[link.from];
-			const to = targets[link.to];
-			const curvature =
-				from && to
-					? curvatureAround(
-							from,
-							to,
-							Object.entries(targets)
-								.filter(([code]) => code !== link.from && code !== link.to)
-								.map(([, point]) => point),
-							// In layout units: roughly a node's radius plus a margin, and
-							// the width of a course code set in the label font.
-							{ clearance: 25, labelWidth: 85 }
-						)
-					: 0;
+			const curvature = route(link.from, link.to);
 			graph.addDirectedEdge(link.from, link.to, {
 				type: curvature
 					? dashed
@@ -256,6 +351,18 @@
 					: dashed
 						? 'dashedArrow'
 						: 'arrow',
+				curvature,
+				color: EDGE_COLOR[currentTheme],
+				size: 4
+			});
+		}
+
+		// One arrow on from each junction to its course.
+		for (const set of alternatives) {
+			if (!graph.hasNode(set.id) || !graph.hasNode(set.to) || graph.degree(set.id) === 0) continue;
+			const curvature = route(set.id, set.to);
+			graph.addDirectedEdge(set.id, set.to, {
+				type: curvature ? 'curvedArrow' : 'arrow',
 				curvature,
 				color: EDGE_COLOR[currentTheme],
 				size: 4
@@ -310,7 +417,11 @@
 		if (container) container.style.background = SURFACE[currentTheme];
 		if (ready && renderer) {
 			renderer.setSetting('labelColor', { color: INK[currentTheme].primary });
-			renderer.setSetting('defaultDrawNodeHover', makeHoverRenderer(currentTheme));
+			renderer.setSetting('defaultDrawNodeLabel', makeJunctionLabelRenderer(currentTheme));
+			renderer.setSetting(
+				'defaultDrawNodeHover',
+				skipJunctionHover(makeHoverRenderer(currentTheme))
+			);
 		}
 	});
 </script>

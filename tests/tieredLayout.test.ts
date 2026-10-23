@@ -91,3 +91,25 @@ describe('tieredLayout', () => {
 		expect(goal).toBeCloseTo((a + b) / 2, 0);
 	});
 });
+
+describe('tieredLayout groups', () => {
+	it('keeps each group of alternatives side by side', () => {
+		const prerequisites = ['CPEN 221', 'CPSC 121', 'CPSC 210', 'MATH 220'];
+		const result = tieredLayout(
+			[{ id: 'CPSC 221', tier: 0 }, ...prerequisites.map((id) => ({ id, tier: -1 }))],
+			prerequisites.map((source) => ({ source, target: 'CPSC 221' })),
+			{
+				groups: [
+					['CPSC 210', 'CPEN 221'],
+					['CPSC 121', 'MATH 220']
+				]
+			}
+		);
+		const order = [...prerequisites].sort(
+			(a, b) => result.positions.get(a)!.x - result.positions.get(b)!.x
+		);
+		const at = (code: string) => order.indexOf(code);
+		expect(Math.abs(at('CPSC 210') - at('CPEN 221'))).toBe(1);
+		expect(Math.abs(at('CPSC 121') - at('MATH 220'))).toBe(1);
+	});
+});

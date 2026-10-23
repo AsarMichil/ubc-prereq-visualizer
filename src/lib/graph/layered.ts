@@ -234,6 +234,17 @@ export function gridLayout(
 	};
 }
 
+export interface TieredOptions extends LayeredOptions {
+	/**
+	 * Sets of nodes to keep side by side wherever they share a row - alternatives
+	 * for one requirement, which the canvas joins at a single junction. Left to
+	 * the barycentre they tie on score and fall back to alphabetical order, so
+	 * two "pick one" rows of the same course interleave and their junctions'
+	 * edges cross.
+	 */
+	groups?: string[][];
+}
+
 export interface TieredNode {
 	id: string;
 	/** Signed hop distance; higher values sit higher on screen. */
@@ -252,9 +263,14 @@ export interface TieredNode {
 export function tieredLayout(
 	nodes: TieredNode[],
 	edges: LayoutEdge[],
-	options: LayeredOptions = {}
+	options: TieredOptions = {}
 ): LayeredResult {
 	const { nodeWidth, nodeHeight, xGap, yGap, sweeps } = { ...DEFAULTS, ...options };
+
+	const groupOf = new Map<string, number>();
+	(options.groups ?? []).forEach((members, index) => {
+		for (const id of members) if (!groupOf.has(id)) groupOf.set(id, index);
+	});
 
 	const present = new Set(nodes.map((node) => node.id));
 	const neighbours = new Map<string, string[]>();
@@ -288,9 +304,32 @@ export function tieredLayout(
 			if (row.length < 2) continue;
 			const scored = row.map((id, position) => ({
 				id,
-				score: barycentre(neighbours.get(id), indexOf) ?? position
+				position,
+				score: barycentre(neighbours.get(id), indexOf) ?? position,
+				/** Where the node's group starts in the row; its own position if ungrouped. */
+				first: position
 			}));
-			scored.sort((a, b) => a.score - b.score);
+
+			// A group sorts as one block: at its members' mean score, held together by
+			// where it starts, then in its existing order inside the block.
+			const blocks = new Map<number, { sum: number; count: number; first: number }>();
+			for (const entry of scored) {
+				const group = groupOf.get(entry.id);
+				if (group === undefined) continue;
+				const block = blocks.get(group) ?? { sum: 0, count: 0, first: entry.position };
+				block.sum += entry.score;
+				block.count += 1;
+				block.first = Math.min(block.first, entry.position);
+				blocks.set(group, block);
+			}
+			for (const entry of scored) {
+				const block = blocks.get(groupOf.get(entry.id) ?? -1);
+				if (!block || block.count < 2) continue;
+				entry.score = block.sum / block.count;
+				entry.first = block.first;
+			}
+
+			scored.sort((a, b) => a.score - b.score || a.first - b.first || a.position - b.position);
 			row.splice(0, row.length, ...scored.map((entry) => entry.id));
 		}
 		reindex();

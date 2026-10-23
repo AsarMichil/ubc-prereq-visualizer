@@ -26,6 +26,7 @@ import type { TrackFn } from '../analytics';
 import type { CourseAttributes, EdgeAttributes } from '../graph/loadGraph';
 import { getCourse, peekCourse, preloadSubjects, type CourseDetail } from '../data/courseDetail';
 import {
+	alternativeSets,
 	displayGroups,
 	groupSatisfied,
 	requirementGroups,
@@ -39,6 +40,20 @@ export type Direction = 'back' | 'forward';
 export interface PathEdge {
 	from: string;
 	to: string;
+}
+
+/**
+ * Drawn prerequisites of one course that are alternatives to each other - "one
+ * of B or C" with both drawn. The canvas joins their edges at a junction.
+ */
+export interface Alternatives {
+	/** Stable id for the junction, unique across the drawn set. */
+	id: string;
+	/** The course the alternatives lead to. */
+	to: string;
+	from: string[];
+	/** How many of `from` the row needs. */
+	n: number;
 }
 
 export interface ForwardCandidate {
@@ -197,6 +212,31 @@ export class PathBuilderState {
 		}
 
 		return keys;
+	});
+
+	/**
+	 * Alternatives per course, wherever two or more of a row's options are drawn
+	 * and actually wired to it. Derived like `surplus`, so it follows every
+	 * change to the drawn set.
+	 */
+	alternatives = $derived.by(() => {
+		void this.detailsVersion;
+		const drawn = new Set(this.codes);
+		const wired = new Set(this.edges.map((edge) => `${edge.from}>${edge.to}`));
+		const found: Alternatives[] = [];
+
+		for (const code of this.codes) {
+			const detail = peekCourse(code);
+			if (!detail?.prerequisite) continue;
+
+			const sets = alternativeSets(requirementGroups(detail.prerequisite), drawn);
+			sets.forEach((set, index) => {
+				const from = set.codes.filter((other) => wired.has(`${other}>${code}`));
+				if (from.length >= 2) found.push({ id: `or:${code}:${index}`, to: code, from, n: set.n });
+			});
+		}
+
+		return found;
 	});
 
 	/** Loads detail for every drawn course so `unmet` can be evaluated. */
