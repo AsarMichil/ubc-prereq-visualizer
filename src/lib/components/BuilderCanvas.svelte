@@ -164,10 +164,21 @@
 		const span = Math.max(maxX - minX, maxY - minY, 0.05);
 		// Courses only: junctions are part of the edges, not more things to frame.
 		const padding = Math.min(Math.max(3.4 - builder.codes.length * 0.22, 1.3), 3.2);
-		const ratio = Math.min(span * padding, 4);
-		instance
-			.getCamera()
-			.animate({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, ratio }, { duration: 420 });
+		let ratio = Math.min(span * padding, 4);
+		let x = (minX + maxX) / 2;
+
+		// On a phone the row runs across the narrow side, where labels - a fixed
+		// pixel width - collided at that padding. Fill the width instead, and leave
+		// room for the rightmost label rather than an equal margin either side.
+		// Portrait, the visible width at a given ratio is the ratio itself.
+		const width = container.clientWidth;
+		if (width < 640 && width <= container.clientHeight) {
+			const label = 72;
+			ratio = Math.min((span * Math.min(padding, 1.15)) / (1 - label / width), 4);
+			x += (label * ratio) / width / 2;
+		}
+
+		instance.getCamera().animate({ x, y: (minY + maxY) / 2, ratio }, { duration: 420 });
 	}
 
 	/**
