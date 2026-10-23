@@ -214,3 +214,46 @@ describe('parseRequirement', () => {
 		expect(() => parseRequirement('((( ;;; ??? )))')).not.toThrow();
 	});
 });
+
+describe('lists closed by "or" with no quantifier', () => {
+	it('reads a bare comma list ending in "or" as one list of alternatives', () => {
+		expect(
+			shape(
+				parseRequirement(
+					'All of a) DSCI_V 100 or DATA_O 101; b) MATH_V 100, MATH_V 110, MATH_V 120, MATH_V 180, SCIE_V 001 or MATH_O 100; and c) CPSC_V 103 or CPSC_V 110'
+				)
+			)
+		).toEqual({
+			all: [
+				{ oneOf: ['DSCI 100', 'DATA_O 101'] },
+				{ oneOf: ['MATH 100', 'MATH 110', 'MATH 120', 'MATH 180', 'SCIE 001', 'MATH_O 100'] },
+				{ oneOf: ['CPSC 103', 'CPSC 110'] }
+			]
+		});
+	});
+
+	it('accepts an Oxford comma before the "or"', () => {
+		expect(shape(parseRequirement('MECH_V 466, ELEC_V 341, or CHBE_V 356'))).toEqual({
+			oneOf: ['MECH 466', 'ELEC 341', 'CHBE 356']
+		});
+		expect(shape(parseRequirement('ENGL_V 112, WRDS_V 150, or APSC_O 176'))).toEqual({
+			oneOf: ['ENGL 112', 'WRDS 150', 'APSC_O 176']
+		});
+	});
+
+	it('leaves a comma list joined by "and" a conjunction', () => {
+		expect(shape(parseRequirement('CPSC 110, CPSC 121 and MATH 100'))).toEqual({
+			all: ['CPSC 110', 'CPSC 121', 'MATH 100']
+		});
+	});
+
+	it('keeps free text inside a "One of" list as one of the alternatives', () => {
+		expect(
+			shape(
+				parseRequirement('One of BC High School Spanish Grade 12, SPAN 202, SPAN 203 or SPAN 206')
+			)
+		).toEqual({
+			oneOf: [{ other: 'BC High School Spanish Grade 12' }, 'SPAN 202', 'SPAN 203', 'SPAN 206']
+		});
+	});
+});

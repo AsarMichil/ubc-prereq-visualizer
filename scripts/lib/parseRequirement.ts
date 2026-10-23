@@ -202,9 +202,12 @@ class Parser {
 				return inner;
 			}
 
-			case 'COURSE':
+			case 'COURSE': {
+				const list = this.bareOrList();
+				if (list) return list;
 				this.pos += 1;
 				return { kind: 'course', code: token.course!.code, raw: token.raw.trim() };
+			}
 
 			case 'HS_COURSE':
 				this.pos += 1;
@@ -217,6 +220,54 @@ class Parser {
 			default:
 				return this.parseCondition();
 		}
+	}
+
+	/**
+	 * "MATH 100, MATH 110, SCIE 001 or MATH_O 100" with no "one of" in front: a
+	 * list closed by "or" is one list of alternatives, as in ordinary English.
+	 * Left to the grammar, commas bind tighter than "or" and it read as "all of
+	 * the first three, or the last".
+	 *
+	 * Only a run of plain courses qualifies - commas first, then "or" (with or
+	 * without an Oxford comma) - and only when it isn't followed by "and", where
+	 * "A, B or C and D" has no reading worth guessing at. Returns null, consuming
+	 * nothing, for anything else.
+	 */
+	private bareOrList(): RequirementNode | null {
+		let i = this.pos;
+		const at = (offset: number, type: TokenType) => this.tokens[i + offset]?.type === type;
+		const codes: Token[] = [this.tokens[i]];
+		let commas = 0;
+		let ors = 0;
+
+		i += 1;
+		for (;;) {
+			if (ors === 0 && at(0, 'COMMA') && at(1, 'COURSE')) {
+				commas += 1;
+				i += 1;
+			} else if (at(0, 'COMMA') && at(1, 'OR') && at(2, 'COURSE')) {
+				ors += 1;
+				i += 2;
+			} else if (at(0, 'OR') && at(1, 'COURSE')) {
+				ors += 1;
+				i += 1;
+			} else break;
+			codes.push(this.tokens[i]);
+			i += 1;
+		}
+
+		if (commas === 0 || ors === 0 || at(0, 'AND') || (at(0, 'COMMA') && at(1, 'AND'))) return null;
+
+		this.pos = i;
+		return {
+			kind: 'oneOf',
+			groupId: this.nextGroupId(),
+			children: codes.map((token) => ({
+				kind: 'course' as const,
+				code: token.course!.code,
+				raw: token.raw.trim()
+			}))
+		};
 	}
 
 	private parseQuantified(): RequirementNode {
@@ -234,7 +285,15 @@ class Parser {
 			// "One of either BIOL 201 or BIOC 202" — the operand is a nested
 			// construct, not a course list. Parse it rather than losing its codes.
 			if (this.startsRequirement()) return this.parseAtom();
-			return this.parseCondition();
+			const condition = this.parseCondition();
+			// "One of BC High School Spanish Grade 12, SPAN 202 or SPAN 206" - free
+			// text first, then courses. The quantifier still ranges over all of them.
+			if (quant.quantity === 1 && this.is('COMMA') && this.is('COURSE', 1)) {
+				this.pos += 1;
+				const rest = this.parseCourseList();
+				return { kind: 'oneOf', groupId: this.nextGroupId(), children: [condition, ...rest] };
+			}
+			return condition;
 		}
 		if (children.length === 1) return children[0];
 
